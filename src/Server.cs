@@ -15,7 +15,7 @@ while(true){
 }
 
 async Task HandleIncomingRequestAsync(Socket socket){
-    var buffer = new byte[socket.ReceiveBufferSize];
+    var buffer = new byte[1024];
     await socket.ReceiveAsync(buffer);
 
     var request = Encoding.UTF8.GetString(buffer).TrimEnd('\0');
