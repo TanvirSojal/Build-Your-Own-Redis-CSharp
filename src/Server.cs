@@ -29,6 +29,8 @@ async Task HandleIncomingRequestAsync(Socket socket){
 
     var protocol = GetRedisProtocol(command[1]);
 
+    Console.WriteLine($"Protocol: {protocol}");
+
     if (protocol == RedisProtocol.PING)
     {
         var response = Encoding.UTF8.GetBytes("+PONG\r\n");
@@ -36,10 +38,11 @@ async Task HandleIncomingRequestAsync(Socket socket){
     }   
     else if (protocol == RedisProtocol.ECHO)
     {
-        if (command.Length < 3){
-            await socket.SendAsync(Encoding.UTF8.GetBytes("INVALID\r\n"), SocketFlags.None);
-            return;
-        }
+        // if (command.Length < 3){
+        //     await socket.SendAsync(Encoding.UTF8.GetBytes("INVALID\r\n"), SocketFlags.None);
+        //     return;
+        // }
+        Console.WriteLine($"Payload: {command[2]}");
 
         var bulkString = GetRedisBulkString(command[2]);
         var response = Encoding.UTF8.GetBytes(bulkString);
