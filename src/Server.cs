@@ -1,11 +1,10 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using Microsoft.VisualBasic;
 
-// You can use print statements as follows for debugging, they'll be visible when running tests.
 Console.WriteLine("Logs from your program will appear here!");
 
-// Uncomment this block to pass the first stage
 TcpListener server = new TcpListener(IPAddress.Any, 6379);
 server.Start();
 
@@ -16,21 +15,48 @@ while(true){
 }
 
 async Task HandleIncomingRequestAsync(Socket socket){
-    Console.WriteLine("Handling request");
-    var buffer = new byte[256];
-    var bytesReceived = 0;
-    var totalBytesReceived = 0;
-    var data = "";
+    var buffer = new byte[socket.ReceiveBufferSize];
+    await socket.ReceiveAsync(buffer);
 
-    var response = Encoding.UTF8.GetBytes("+PONG\r\n");
+    var request = Encoding.UTF8.GetString(buffer);
 
-    while((bytesReceived = await socket.ReceiveAsync(buffer)) > 0){
-        totalBytesReceived += bytesReceived;
-        data += Encoding.UTF8.GetString(buffer);
-        //Console.WriteLine(data, bytesReceived);
-        await socket.SendAsync(response);
+    Console.WriteLine(request);
+    
+    var command = request.Split(" ");
+
+    if (command.Length == 0){
+        await socket.SendAsync(Encoding.UTF8.GetBytes("+PONG\r\n"), SocketFlags.None);
+        return;
     }
+
+    var protocol = GetRedisProtocol(command[0]);
+
+    Console.WriteLine($"Protocol: {protocol}");
+
+    if (protocol == RedisProtocol.PING)
+    {
+        var response = Encoding.UTF8.GetBytes("+PONG\r\n");
+        await socket.SendAsync(response, SocketFlags.None);
+    }   
+    else if (protocol == RedisProtocol.ECHO)
+    {
+        var response = Encoding.UTF8.GetBytes(command[1]);
+        await socket.SendAsync(response, SocketFlags.None);
+    }
+    Console.WriteLine("Finished processing request");
 }
 
-// Console.WriteLine(data);
-// Console.WriteLine($"Total bytes received: {totalBytesReceived}");
+RedisProtocol GetRedisProtocol(string protocol){
+    return protocol switch
+    {
+        "PING" => RedisProtocol.PING,
+        "ECHO" => RedisProtocol.ECHO,
+        _ => RedisProtocol.NONE,
+    };
+}
+
+enum RedisProtocol {
+    NONE,
+    PING,
+    ECHO
+}
