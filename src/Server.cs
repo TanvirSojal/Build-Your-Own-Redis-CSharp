@@ -19,55 +19,61 @@ while (true)
 async Task HandleIncomingRequestAsync(Socket socket)
 {
     var buffer = new byte[1024];
-    await socket.ReceiveAsync(buffer);
-
-    var request = Encoding.UTF8.GetString(buffer).TrimEnd('\0');
-
-    //Console.WriteLine($"received: [{request}]");
-
-    var command = request.Split("\\r\\n"); //Regex.Split(request, @"\s+");
-
-    var index = 0;
-    foreach (var r in command)
+    
+    while (true)
     {
-        Console.WriteLine($"{index++} {r}");
-    }
+        await socket.ReceiveAsync(buffer);
 
-    // if (command.Length < 2){
-    //     await socket.SendAsync(Encoding.UTF8.GetBytes("INVALID\r\n"), SocketFlags.None);
-    //     return;
-    // }
+        var request = Encoding.UTF8.GetString(buffer).TrimEnd('\0');
 
-    var protocol = GetRedisProtocol(command[2]);
+        Console.WriteLine($"received: [{request}] Length: {request.Length}");
 
-    Console.WriteLine($"Protocol: {protocol}");
+        var command = Regex.Split(request, @"\s+");
 
-    if (protocol == RedisProtocol.PING)
-    {
-        var response = Encoding.UTF8.GetBytes("+PONG\r\n");
-        await socket.SendAsync(response, SocketFlags.None);
-    }
-    else if (protocol == RedisProtocol.ECHO)
-    {
-        // if (command.Length < 3){
+        var index = 0;
+        foreach (var r in command)
+        {
+            Console.WriteLine($"{index++} {r}");
+        }
+
+        // if (command.Length < 2){
         //     await socket.SendAsync(Encoding.UTF8.GetBytes("INVALID\r\n"), SocketFlags.None);
         //     return;
         // }
-        Console.WriteLine($"Payload: {command[4]}");
 
-        var bulkString = GetRedisBulkString(command[4]);
-        var response = Encoding.UTF8.GetBytes(bulkString);
-        await socket.SendAsync(response, SocketFlags.None);
-    }
-    else
-    {
-        await socket.SendAsync(Encoding.UTF8.GetBytes("INVALID\r\n"), SocketFlags.None);
+        Console.WriteLine($"Protocol String: {command[2]}");
+
+        var protocol = GetRedisProtocol(command[2]);
+
+        Console.WriteLine($"Protocol: {protocol}");
+
+        if (protocol == RedisProtocol.PING)
+        {
+            var response = Encoding.UTF8.GetBytes("+PONG\r\n");
+            await socket.SendAsync(response, SocketFlags.None);
+        }
+        else if (protocol == RedisProtocol.ECHO)
+        {
+            // if (command.Length < 3){
+            //     await socket.SendAsync(Encoding.UTF8.GetBytes("INVALID\r\n"), SocketFlags.None);
+            //     return;
+            // }
+            Console.WriteLine($"Payload: {command[4]}");
+
+            var bulkString = GetRedisBulkString(command[4]);
+            var response = Encoding.UTF8.GetBytes(bulkString);
+            await socket.SendAsync(response, SocketFlags.None);
+        }
+        else
+        {
+            await socket.SendAsync(Encoding.UTF8.GetBytes("INVALID\r\n"), SocketFlags.None);
+        }
     }
 }
 
 string GetRedisBulkString(string payload)
 {
-    return $"${payload.Length}\\r\\n{payload}\\r\\n";
+    return $"${payload.Length}\r\n{payload}\r\n";
 }
 
 RedisProtocol GetRedisProtocol(string protocol)
