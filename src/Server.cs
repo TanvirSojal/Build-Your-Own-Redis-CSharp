@@ -1,7 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using Microsoft.VisualBasic;
+using System.Text.RegularExpressions;
 
 Console.WriteLine("Logs from your program will appear here!");
 
@@ -18,14 +18,14 @@ async Task HandleIncomingRequestAsync(Socket socket){
     var buffer = new byte[socket.ReceiveBufferSize];
     await socket.ReceiveAsync(buffer);
 
-    var request = Encoding.UTF8.GetString(buffer);
+    var request = Encoding.UTF8.GetString(buffer).TrimEnd('\0');
 
     Console.WriteLine(request);
     
-    var command = request.Split(" ");
+    var command = Regex.Split(request, @"\s+");
 
     if (command.Length == 0){
-        await socket.SendAsync(Encoding.UTF8.GetBytes("+PONG\r\n"), SocketFlags.None);
+        await socket.SendAsync(Encoding.UTF8.GetBytes("INVALID\r\n"), SocketFlags.None);
         return;
     }
 
@@ -40,17 +40,31 @@ async Task HandleIncomingRequestAsync(Socket socket){
     }   
     else if (protocol == RedisProtocol.ECHO)
     {
-        var response = Encoding.UTF8.GetBytes(command[1]);
+        if (command.Length < 2){
+            await socket.SendAsync(Encoding.UTF8.GetBytes("INVALID\r\n"), SocketFlags.None);
+            return;
+        }
+
+        var bulkString = GetRedisBulkString(command[1]);
+        var response = Encoding.UTF8.GetBytes(bulkString);
         await socket.SendAsync(response, SocketFlags.None);
+    }
+    else{
+        await socket.SendAsync(Encoding.UTF8.GetBytes("INVALID\r\n"), SocketFlags.None);
     }
     Console.WriteLine("Finished processing request");
 }
 
+string GetRedisBulkString(string payload){
+    return $"${65536 - payload.Length}\\r\\n{payload}\\r\\n";
+}
+
 RedisProtocol GetRedisProtocol(string protocol){
-    return protocol switch
+    Console.WriteLine($"Checking protocol [{protocol.ToLower()}] {(protocol.ToLower() == "ping")}");
+    return protocol.ToLower() switch
     {
-        "PING" => RedisProtocol.PING,
-        "ECHO" => RedisProtocol.ECHO,
+        "ping" => RedisProtocol.PING,
+        "echo" => RedisProtocol.ECHO,
         _ => RedisProtocol.NONE,
     };
 }
