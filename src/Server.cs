@@ -20,12 +20,14 @@ async Task HandleIncomingRequestAsync(Socket socket){
 
     var request = Encoding.UTF8.GetString(buffer).TrimEnd('\0');
 
+    Console.WriteLine($"received: [{request}]");
+
     var command = Regex.Split(request, @"\s+");
 
-    if (command.Length < 2){
-        await socket.SendAsync(Encoding.UTF8.GetBytes("INVALID\r\n"), SocketFlags.None);
-        return;
-    }
+    // if (command.Length < 2){
+    //     await socket.SendAsync(Encoding.UTF8.GetBytes("INVALID\r\n"), SocketFlags.None);
+    //     return;
+    // }
 
     var protocol = GetRedisProtocol(command[1]);
 
