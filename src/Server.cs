@@ -18,8 +18,10 @@ while (true)
 // *2\r\n$4\r\nECHO\r\n$3\r\nhey\r\n
 async Task HandleIncomingRequestAsync(Socket socket)
 {
+    var store = new Dictionary<string, string>();
+
     var buffer = new byte[1024];
-    
+
     while (true)
     {
         await socket.ReceiveAsync(buffer);
@@ -36,11 +38,6 @@ async Task HandleIncomingRequestAsync(Socket socket)
             Console.WriteLine($"{index++} {r}");
         }
 
-        // if (command.Length < 2){
-        //     await socket.SendAsync(Encoding.UTF8.GetBytes("INVALID\r\n"), SocketFlags.None);
-        //     return;
-        // }
-
         Console.WriteLine($"Protocol String: {command[2]}");
 
         var protocol = GetRedisProtocol(command[2]);
@@ -49,24 +46,40 @@ async Task HandleIncomingRequestAsync(Socket socket)
 
         if (protocol == RedisProtocol.PING)
         {
-            var response = Encoding.UTF8.GetBytes("+PONG\r\n");
-            await socket.SendAsync(response, SocketFlags.None);
+            await SendSocketResponseAsync(socket, "PONG");
         }
         else if (protocol == RedisProtocol.ECHO)
         {
-            // if (command.Length < 3){
-            //     await socket.SendAsync(Encoding.UTF8.GetBytes("INVALID\r\n"), SocketFlags.None);
-            //     return;
-            // }
             Console.WriteLine($"Payload: {command[4]}");
 
-            var bulkString = GetRedisBulkString(command[4]);
-            var response = Encoding.UTF8.GetBytes(bulkString);
-            await socket.SendAsync(response, SocketFlags.None);
+            await SendSocketResponseAsync(socket, command[4]);
+        }
+        else if (protocol == RedisProtocol.SET)
+        {
+            var key = command[4];
+            var value = command[6];
+
+            if (store.TryAdd(key, value))
+            {
+                await SendOkSocketResponseAsync(socket);
+            }
+        }
+        else if (protocol == RedisProtocol.GET)
+        {
+            var key = command[4];
+
+            if (store.TryGetValue(key, out var value))
+            {
+                await SendSocketResponseAsync(socket, value);
+            }
+            else
+            {
+                await SendNullSocketResponseAsync(socket);
+            }
         }
         else
         {
-            await socket.SendAsync(Encoding.UTF8.GetBytes("INVALID\r\n"), SocketFlags.None);
+            await SendNullSocketResponseAsync(socket);
         }
     }
 }
@@ -76,12 +89,36 @@ string GetRedisBulkString(string payload)
     return $"${payload.Length}\r\n{payload}\r\n";
 }
 
+string GetNullBulkString() => "$-1\r\n";
+string GetOkResponseString() => "+OK\r\n";
+
+async Task SendSocketResponseAsync(Socket socket, string message)
+{
+    var bulkString = GetRedisBulkString(message);
+    var response = Encoding.UTF8.GetBytes(bulkString);
+    await socket.SendAsync(response, SocketFlags.None);
+}
+
+async Task SendNullSocketResponseAsync(Socket socket)
+{
+    var response = Encoding.UTF8.GetBytes(GetNullBulkString());
+    await socket.SendAsync(response, SocketFlags.None);
+}
+
+async Task SendOkSocketResponseAsync(Socket socket)
+{
+    var response = Encoding.UTF8.GetBytes(GetOkResponseString());
+    await socket.SendAsync(response, SocketFlags.None);
+}
+
 RedisProtocol GetRedisProtocol(string protocol)
 {
     return protocol.ToLower() switch
     {
         "ping" => RedisProtocol.PING,
         "echo" => RedisProtocol.ECHO,
+        "set" => RedisProtocol.SET,
+        "get" => RedisProtocol.GET,
         _ => RedisProtocol.NONE,
     };
 }
@@ -90,5 +127,7 @@ enum RedisProtocol
 {
     NONE,
     PING,
-    ECHO
+    ECHO,
+    GET,
+    SET
 }
