@@ -18,140 +18,66 @@ while (true)
 // *2\r\n$4\r\nECHO\r\n$3\r\nhey\r\n
 async Task HandleIncomingRequestAsync(Socket socket)
 {
-    var store = new Dictionary<string, RedisValue>();
+    var readBuffer = new byte[1024];
 
-    var buffer = new byte[1024];
+    var engine = new RedisEngine();
 
     while (true)
     {
-        await socket.ReceiveAsync(buffer);
+        await socket.ReceiveAsync(readBuffer);
 
-        var request = Encoding.UTF8.GetString(buffer).TrimEnd('\0');
+        var request = Encoding.UTF8.GetString(readBuffer).TrimEnd('\0');
 
         Console.WriteLine($"received: [{request}] Length: {request.Length}");
 
-        var command = Regex.Split(request, @"\s+");
+        var commands = Regex.Split(request, @"\s+");
 
         var index = 0;
-        foreach (var r in command)
+
+        foreach (var command in commands)
         {
-            Console.WriteLine($"{index++} {r}");
+            Console.WriteLine($"{index++} {command}");
         }
 
-        Console.WriteLine($"Protocol String: {command[2]}");
-
-        var protocol = GetRedisProtocol(command[2]);
+        var protocol = GetRedisProtocol(commands[2]);
 
         Console.WriteLine($"Protocol: {protocol}");
 
-        if (protocol == RedisProtocol.PING)
+        switch (protocol)
         {
-            await SendSocketResponseAsync(socket, "PONG");
+            case RedisProtocol.PING:
+                await engine.ProcessPingAsync(socket, commands);
+                break;
+            
+            case RedisProtocol.ECHO:
+                await engine.ProcessEchoAsync(socket, commands);
+                break;
+
+            case RedisProtocol.SET:
+                await engine.ProcessSetAsync(socket, commands);
+                break;
+            
+            case RedisProtocol.GET:
+                await engine.ProcessGetAsync(socket, commands);
+                break;
+
+            case RedisProtocol.NONE:
+                break;
+            
         }
-        else if (protocol == RedisProtocol.ECHO)
-        {
-            Console.WriteLine($"Payload: {command[4]}");
-
-            await SendSocketResponseAsync(socket, command[4]);
-        }
-        else if (protocol == RedisProtocol.SET)
-        {
-            var key = command[4];
-            var value = command[6];
-
-            var expiry = (long?)null;
-
-            if (command.Length >= 10)
-            {
-                var argument = command[8];
-
-                if (argument.ToLower() == "px")
-                {
-                    expiry = long.Parse(command[10]);
-                }
-            }
-
-            var valueToStore = new RedisValue(value, expiry);
-
-            if (store.TryAdd(key, valueToStore))
-            {
-                await SendOkSocketResponseAsync(socket);
-            }
-        }
-        else if (protocol == RedisProtocol.GET)
-        {
-            var key = command[4];
-
-            if (store.TryGetValue(key, out var value))
-            {
-                if (value.IsExpired())
-                {
-                    store.Remove(key);
-
-                    await SendNullSocketResponseAsync(socket);
-                }
-
-                else
-                {
-                    await SendSocketResponseAsync(socket, value.Value);
-                }
-            }
-            else
-            {
-                await SendNullSocketResponseAsync(socket);
-            }
-        }
-        else
-        {
-            await SendNullSocketResponseAsync(socket);
-        }
+        
     }
-}
-
-string GetRedisBulkString(string payload)
-{
-    return $"${payload.Length}\r\n{payload}\r\n";
-}
-
-string GetNullBulkString() => "$-1\r\n";
-string GetOkResponseString() => "+OK\r\n";
-
-async Task SendSocketResponseAsync(Socket socket, string message)
-{
-    var bulkString = GetRedisBulkString(message);
-    var response = Encoding.UTF8.GetBytes(bulkString);
-    await socket.SendAsync(response, SocketFlags.None);
-}
-
-async Task SendNullSocketResponseAsync(Socket socket)
-{
-    var response = Encoding.UTF8.GetBytes(GetNullBulkString());
-    await socket.SendAsync(response, SocketFlags.None);
-}
-
-async Task SendOkSocketResponseAsync(Socket socket)
-{
-    var response = Encoding.UTF8.GetBytes(GetOkResponseString());
-    await socket.SendAsync(response, SocketFlags.None);
 }
 
 RedisProtocol GetRedisProtocol(string protocol)
 {
     return protocol.ToLower() switch
     {
-        "ping" => RedisProtocol.PING,
-        "echo" => RedisProtocol.ECHO,
-        "set" => RedisProtocol.SET,
-        "get" => RedisProtocol.GET,
+        RedisKeyword.PING => RedisProtocol.PING,
+        RedisKeyword.ECHO => RedisProtocol.ECHO,
+        RedisKeyword.SET => RedisProtocol.SET,
+        RedisKeyword.GET => RedisProtocol.GET,
         _ => RedisProtocol.NONE,
     };
 }
 
-enum RedisProtocol
-{
-    NONE,
-    PING,
-    ECHO,
-    GET,
-    SET
-}
