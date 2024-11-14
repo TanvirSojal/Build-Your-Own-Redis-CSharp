@@ -5,6 +5,8 @@ public class RedisEngine
 {
     private Dictionary<string, RedisValue> store = new Dictionary<string, RedisValue>();
 
+    public RdbConfiguration RdbConfiguration { get; set; } = new RdbConfiguration();
+
     public async Task ProcessPingAsync(Socket socket, string[] commands)
     {
         await SendSocketResponseAsync(socket, "PONG");
@@ -68,13 +70,56 @@ public class RedisEngine
         }
     }
 
+    public async Task ProcessConfigAsync(Socket socket, string[] commands)
+    {
+        var subcommand = commands[4];
+
+        if (subcommand.Equals("get", StringComparison.OrdinalIgnoreCase))
+        {
+            await ProcessConfigGetAsync(socket, commands);
+        }
+    }
+
+    private async Task ProcessConfigGetAsync(Socket socket, string[] commands)
+    {
+        var argument = commands[6];
+
+        if (argument.Equals("dir", StringComparison.OrdinalIgnoreCase))
+        {
+            await SendSocketResponseArrayAsync(socket, [argument, RdbConfiguration.Directiory]);
+        }
+        else if (argument.Equals("dbfilename", StringComparison.OrdinalIgnoreCase))
+        {
+            await SendSocketResponseArrayAsync(socket, [argument, RdbConfiguration.DbFileName]);
+        }
+    }
+
     private string GetRedisBulkString(string payload) => $"${payload.Length}\r\n{payload}\r\n";
     private string GetNullBulkString() => "$-1\r\n";
     private string GetOkResponseString() => "+OK\r\n";
+    private string GetRedisBulkArray(string[] payload)
+    {
+        var response = $"*{payload.Length}\r\n";
+
+        foreach (var item in payload)
+        {
+            response += GetRedisBulkString(item);
+        }
+
+        return response;
+    }
+
 
     private async Task SendSocketResponseAsync(Socket socket, string message)
     {
         var bulkString = GetRedisBulkString(message);
+        var response = Encoding.UTF8.GetBytes(bulkString);
+        await socket.SendAsync(response, SocketFlags.None);
+    }
+
+    private async Task SendSocketResponseArrayAsync(Socket socket, string[] message)
+    {
+        var bulkString = GetRedisBulkArray(message);
         var response = Encoding.UTF8.GetBytes(bulkString);
         await socket.SendAsync(response, SocketFlags.None);
     }

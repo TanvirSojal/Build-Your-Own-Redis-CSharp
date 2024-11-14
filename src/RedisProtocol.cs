@@ -4,5 +4,6 @@ public enum RedisProtocol
     PING,
     ECHO,
     GET,
-    SET
+    SET,
+    CONFIG
 }

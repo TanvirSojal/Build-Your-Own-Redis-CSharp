@@ -5,6 +5,21 @@ using System.Text.RegularExpressions;
 
 Console.WriteLine("Logs from your program will appear here!");
 
+var engine = new RedisEngine();
+
+// Read CLI arguments
+for (var index = 0; index < args.Length; index++)
+{
+    if (args[index].Equals("--dir", StringComparison.OrdinalIgnoreCase))
+    {
+        engine.RdbConfiguration.Directiory = args[index+1];
+    }
+    if (args[index].Equals("--dbfilename", StringComparison.OrdinalIgnoreCase))
+    {
+        engine.RdbConfiguration.DbFileName = args[index+1];
+    }
+}
+
 TcpListener server = new TcpListener(IPAddress.Any, 6379);
 server.Start();
 
@@ -19,8 +34,6 @@ while (true)
 async Task HandleIncomingRequestAsync(Socket socket)
 {
     var readBuffer = new byte[1024];
-
-    var engine = new RedisEngine();
 
     while (true)
     {
@@ -61,6 +74,10 @@ async Task HandleIncomingRequestAsync(Socket socket)
                 await engine.ProcessGetAsync(socket, commands);
                 break;
 
+            case RedisProtocol.CONFIG:
+                await engine.ProcessConfigAsync(socket, commands);
+                break;
+
             case RedisProtocol.NONE:
                 break;
             
@@ -77,7 +94,7 @@ RedisProtocol GetRedisProtocol(string protocol)
         RedisKeyword.ECHO => RedisProtocol.ECHO,
         RedisKeyword.SET => RedisProtocol.SET,
         RedisKeyword.GET => RedisProtocol.GET,
+        RedisKeyword.CONFIG => RedisProtocol.CONFIG,
         _ => RedisProtocol.NONE,
     };
 }
-
