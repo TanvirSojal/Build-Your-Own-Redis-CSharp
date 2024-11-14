@@ -18,7 +18,7 @@ while (true)
 // *2\r\n$4\r\nECHO\r\n$3\r\nhey\r\n
 async Task HandleIncomingRequestAsync(Socket socket)
 {
-    var store = new Dictionary<string, string>();
+    var store = new Dictionary<string, RedisValue>();
 
     var buffer = new byte[1024];
 
@@ -59,7 +59,21 @@ async Task HandleIncomingRequestAsync(Socket socket)
             var key = command[4];
             var value = command[6];
 
-            if (store.TryAdd(key, value))
+            var expiry = (long?)null;
+
+            if (command.Length >= 10)
+            {
+                var argument = command[8];
+
+                if (argument.ToLower() == "px")
+                {
+                    expiry = long.Parse(command[10]);
+                }
+            }
+
+            var valueToStore = new RedisValue(value, expiry);
+
+            if (store.TryAdd(key, valueToStore))
             {
                 await SendOkSocketResponseAsync(socket);
             }
@@ -70,7 +84,17 @@ async Task HandleIncomingRequestAsync(Socket socket)
 
             if (store.TryGetValue(key, out var value))
             {
-                await SendSocketResponseAsync(socket, value);
+                if (value.IsExpired())
+                {
+                    store.Remove(key);
+
+                    await SendNullSocketResponseAsync(socket);
+                }
+
+                else
+                {
+                    await SendSocketResponseAsync(socket, value.Value);
+                }
             }
             else
             {
