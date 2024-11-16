@@ -1,11 +1,12 @@
-using System.Text;
-
 public class RdbHandler
 {
-    public RedisState RedisState { get; private set; } = new();
     private readonly RdbConfiguration _rdbConfiguration;
     public string Directiory => _rdbConfiguration.Directiory;
     public string DbFileName => _rdbConfiguration.DbFileName;
+
+
+    public RedisState RedisState { get; private set; } = new();
+
 
     public RdbHandler(RdbConfiguration config)
     {
@@ -27,5 +28,36 @@ public class RdbHandler
 
         RedisState.Name = reader.ReadString(5);
         RedisState.Version = reader.ReadString(4);
+
+        while (reader.BaseStream.Position < reader.BaseStream.Length)
+        {
+            var opCode = reader.ReadByte();
+
+            if (opCode == RdbOpCodes.EOF)
+            {
+                break;
+            }
+
+            Console.WriteLine($"Current op: {opCode:X2}");
+            if (opCode == RdbOpCodes.AUX)
+            {
+                try
+                {
+                    var key = reader.ReadLengthEncodedString();
+                    var value = reader.ReadLengthEncodedString();
+                    Console.WriteLine(value, key, value);
+                    RedisState.AuxFields.TryAdd(key, value);
+                }
+                catch
+                {
+
+                }
+            }
+
+            if (opCode == RdbOpCodes.SELECTDB)
+            {
+
+            }
+        }
     }
 }
