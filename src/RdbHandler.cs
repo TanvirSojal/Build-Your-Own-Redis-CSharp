@@ -48,17 +48,32 @@ public class RdbHandler
 
             if (opCode == RdbOpCodes.SELECTDB)
             {
-                var database = new RedisDatabase();
+                var database = ReadDatabase(reader);
 
-                var dbIndex = reader.ReadSizeEncodedInteger();
+                RedisState.Databases.TryAdd(database.Index, database);
 
-                if (int.TryParse(dbIndex, out var index))
-                {
-                    database.Index = index;
-
-                    RedisState.Databases.TryAdd(dbIndex, database);
-                }
             }
         }
+    }
+
+    private RedisDatabase ReadDatabase(BinaryReader reader)
+    {
+        var database = new RedisDatabase();
+
+        var dbIndex = reader.ReadLengthEncodedInteger();
+
+        if (int.TryParse(dbIndex, out var index))
+        {
+            database.Index = index;
+        }
+
+        var resizedb = reader.ReadByte();
+
+        var hashSize = reader.ReadLengthEncodedInteger();
+        var expiryHashSize = reader.ReadLengthEncodedInteger();
+
+        Console.WriteLine("hashSize " +  hashSize + " expiry hashSize " + expiryHashSize);
+
+        return database;
     }
 }

@@ -3,7 +3,7 @@ public class RedisState
     public string Name { get; set; } = "";
     public string Version { get; set; } = "";
     public Dictionary<string, string> AuxFields { get; set; } = new Dictionary<string, string>();
-    public Dictionary<string, RedisDatabase> Databases { get; set; } = new Dictionary<string, RedisDatabase>();
+    public Dictionary<int, RedisDatabase> Databases { get; set; } = new Dictionary<int, RedisDatabase>();
 
     private string GetAuxFields()
     {

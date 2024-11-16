@@ -58,11 +58,11 @@ public static class RdbExtensions
         return Encoding.UTF8.GetString(bytes);
     }
 
-    public static string ReadSizeEncodedInteger(this BinaryReader reader)
+    public static string ReadLengthEncodedInteger(this BinaryReader reader)
     {
         byte firstByte = reader.ReadByte();
 
-        int length = 0;
+        var length = 0;
 
         if (firstByte.IsCurrentByteEnoughToGetLength())
         {
@@ -101,7 +101,7 @@ public static class RdbExtensions
         int __result = 0;
 
         var bytes = reader.ReadBytes(length);
-
+        
         foreach (var b in bytes)
         {
             __result = (__result << sizeof(byte)) | b;
