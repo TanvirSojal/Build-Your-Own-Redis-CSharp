@@ -22,6 +22,8 @@ for (var index = 0; index < args.Length; index++)
 var rdbHandler = new RdbHandler(rdbConfig);
 rdbHandler.RestoreSnapshot();
 
+Console.WriteLine(rdbHandler.RedisState);
+
 var engine = new RedisEngine(rdbHandler);
 
 TcpListener server = new TcpListener(IPAddress.Any, 6379);
