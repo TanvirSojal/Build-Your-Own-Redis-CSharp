@@ -3,9 +3,13 @@ using System.Text;
 
 public class RedisEngine
 {
+    private readonly RdbHandler _rdbHandler;
     private Dictionary<string, RedisValue> store = new Dictionary<string, RedisValue>();
 
-    public RdbConfiguration RdbConfiguration { get; set; } = new RdbConfiguration();
+    public RedisEngine(RdbHandler rdbHandler)
+    {
+        _rdbHandler = rdbHandler;
+    }
 
     public async Task ProcessPingAsync(Socket socket, string[] commands)
     {
@@ -86,11 +90,11 @@ public class RedisEngine
 
         if (argument.Equals("dir", StringComparison.OrdinalIgnoreCase))
         {
-            await SendSocketResponseArrayAsync(socket, [argument, RdbConfiguration.Directiory]);
+            await SendSocketResponseArrayAsync(socket, [argument, _rdbHandler.Directiory]);
         }
         else if (argument.Equals("dbfilename", StringComparison.OrdinalIgnoreCase))
         {
-            await SendSocketResponseArrayAsync(socket, [argument, RdbConfiguration.DbFileName]);
+            await SendSocketResponseArrayAsync(socket, [argument, _rdbHandler.DbFileName]);
         }
     }
 

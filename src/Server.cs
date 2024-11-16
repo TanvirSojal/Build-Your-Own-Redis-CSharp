@@ -5,20 +5,24 @@ using System.Text.RegularExpressions;
 
 Console.WriteLine("Logs from your program will appear here!");
 
-var engine = new RedisEngine();
-
+var rdbConfig = new RdbConfiguration();
 // Read CLI arguments
 for (var index = 0; index < args.Length; index++)
 {
     if (args[index].Equals("--dir", StringComparison.OrdinalIgnoreCase))
     {
-        engine.RdbConfiguration.Directiory = args[index+1];
+        rdbConfig.Directiory = args[index+1];
     }
     if (args[index].Equals("--dbfilename", StringComparison.OrdinalIgnoreCase))
     {
-        engine.RdbConfiguration.DbFileName = args[index+1];
+        rdbConfig.DbFileName = args[index+1];
     }
 }
+
+var rdbHandler = new RdbHandler(rdbConfig);
+rdbHandler.RestoreSnapshot();
+
+var engine = new RedisEngine(rdbHandler);
 
 TcpListener server = new TcpListener(IPAddress.Any, 6379);
 server.Start();
