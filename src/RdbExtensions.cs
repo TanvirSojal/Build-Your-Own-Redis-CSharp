@@ -58,6 +58,59 @@ public static class RdbExtensions
         return Encoding.UTF8.GetString(bytes);
     }
 
+    public static string ReadSizeEncodedInteger(this BinaryReader reader)
+    {
+        byte firstByte = reader.ReadByte();
+
+        int length = 0;
+
+        if (firstByte.IsCurrentByteEnoughToGetLength())
+        {
+            length = firstByte;
+        }
+        else if (firstByte.IsAdditionalByteNeededToGetLength())
+        {
+            var nextByte = reader.ReadByte();
+            length = (firstByte << sizeof(byte)) | nextByte;
+        }
+        else if (firstByte.IsNextFourBytesNeededToGetLength())
+        {
+            length = reader.ReadInt32();
+        }
+        else
+        {
+            var __int = 0;
+            if (firstByte.IsFollowedBy8BitInteger())
+            {
+                __int = reader.ReadByte();
+            }
+            if (firstByte.IsFollowedBy16BitInteger())
+            {
+                __int = reader.ReadInt16();
+            }
+            if (firstByte.IsFollowedBy32BitInteger())
+            {
+                __int = reader.ReadInt32();
+            }
+
+            // LZF is ignored
+
+            return __int.ToString();
+        }
+
+        int __result = 0;
+
+        var bytes = reader.ReadBytes(length);
+
+        foreach (var b in bytes)
+        {
+            __result = (__result << sizeof(byte)) | b;
+        }
+
+        return __result.ToString();
+    }
+
+
     public static bool IsCurrentByteEnoughToGetLength(this byte __byte)
     {
         return (__byte >> 6) == 0b00;

@@ -38,25 +38,26 @@ public class RdbHandler
                 break;
             }
 
-            Console.WriteLine($"Current op: {opCode:X2}");
             if (opCode == RdbOpCodes.AUX)
             {
-                try
-                {
-                    var key = reader.ReadLengthEncodedString();
-                    var value = reader.ReadLengthEncodedString();
-                    Console.WriteLine(value, key, value);
-                    RedisState.AuxFields.TryAdd(key, value);
-                }
-                catch
-                {
-
-                }
+                var key = reader.ReadLengthEncodedString();
+                var value = reader.ReadLengthEncodedString();
+                RedisState.AuxFields.TryAdd(key, value);
+                continue;
             }
 
             if (opCode == RdbOpCodes.SELECTDB)
             {
+                var database = new RedisDatabase();
 
+                var dbIndex = reader.ReadSizeEncodedInteger();
+
+                if (int.TryParse(dbIndex, out var index))
+                {
+                    database.Index = index;
+
+                    RedisState.Databases.TryAdd(dbIndex, database);
+                }
             }
         }
     }
