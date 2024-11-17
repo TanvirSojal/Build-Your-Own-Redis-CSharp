@@ -5,6 +5,8 @@ using System.Text.RegularExpressions;
 
 Console.WriteLine("Logs from your program will appear here!");
 
+var port = 6379;
+
 var rdbConfig = new RdbConfiguration();
 // Read CLI arguments
 for (var index = 0; index < args.Length; index++)
@@ -17,6 +19,9 @@ for (var index = 0; index < args.Length; index++)
     {
         rdbConfig.DbFileName = args[index+1];
     }
+    if (args[index].Equals("--port", StringComparison.OrdinalIgnoreCase)){
+        port = int.Parse(args[index+1]);
+    }
 }
 
 var rdbHandler = new RdbHandler(rdbConfig);
@@ -26,16 +31,13 @@ Console.WriteLine(rdbHandler.RedisState);
 
 var engine = new RedisEngine(rdbHandler);
 
-TcpListener server = new TcpListener(IPAddress.Any, 6379);
+TcpListener server = new TcpListener(IPAddress.Any, port);
 server.Start();
 
 while (true)
 {
     var acceptedSocket = await server.AcceptSocketAsync(); // wait for client
     Console.WriteLine("Accepted a new connection");
-
-    Console.WriteLine("Redis state now ->");
-    Console.WriteLine(rdbHandler.RedisState.Databases.Count);
 
     _ = Task.Run(async () => await HandleIncomingRequestAsync(acceptedSocket));
 }
