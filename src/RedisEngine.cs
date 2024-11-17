@@ -88,6 +88,22 @@ public class RedisEngine
         }
     }
 
+    public async Task ProcessKeysAsync(Socket socket, string[] commands)
+    {
+        var argument = commands[4];
+
+        Console.WriteLine($"Argument {argument}");
+
+        if (argument.Equals("*", StringComparison.OrdinalIgnoreCase))
+        {
+            var db = GetDatabase();
+
+            var keys = db.Store.Keys;
+
+            await SendSocketResponseArrayAsync(socket, keys.ToArray());
+        }
+    }
+
     private async Task ProcessConfigGetAsync(Socket socket, string[] commands)
     {
         var argument = commands[6];
@@ -99,20 +115,6 @@ public class RedisEngine
         else if (argument.Equals("dbfilename", StringComparison.OrdinalIgnoreCase))
         {
             await SendSocketResponseArrayAsync(socket, [argument, _rdbHandler.DbFileName]);
-        }
-    }
-
-    public async Task ProcessKeysAsync(Socket socket, string[] commands)
-    {
-        var argument = commands[6];
-
-        if (argument.Equals("\"*\"", StringComparison.OrdinalIgnoreCase))
-        {
-            var db = GetDatabase();
-
-            var keys = db.Store.Keys;
-
-            await SendSocketResponseArrayAsync(socket, keys.ToArray());
         }
     }
 
