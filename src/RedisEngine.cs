@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
 
@@ -120,6 +121,20 @@ public class RedisEngine
         }
     }
 
+    public async Task ConnectToMasterAsync()
+    {
+        if (_redisInfo.MasterEndpoint == null)
+        {
+            Console.WriteLine("No master specified.");
+            return;
+        }
+
+        var socket = new Socket(_redisInfo.MasterEndpoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+
+        await socket.ConnectAsync(_redisInfo.MasterEndpoint);
+
+        await SendSocketResponseArrayAsync(socket, ["PING"]);
+    }
 
     private async Task ProcessConfigGetAsync(Socket socket, string[] commands)
     {
@@ -137,7 +152,8 @@ public class RedisEngine
 
     private RedisDatabase GetDatabase()
     {
-        if (!_rdbHandler.RedisState.Databases.TryGetValue(_defaultDbIndex, out var db)){
+        if (!_rdbHandler.RedisState.Databases.TryGetValue(_defaultDbIndex, out var db))
+        {
             db = new RedisDatabase();
             _rdbHandler.RedisState.Databases.TryAdd(_defaultDbIndex, db);
         }
@@ -159,7 +175,6 @@ public class RedisEngine
 
         return response;
     }
-
 
     private async Task SendSocketResponseAsync(Socket socket, string message)
     {

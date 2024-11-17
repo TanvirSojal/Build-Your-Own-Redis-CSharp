@@ -25,6 +25,7 @@ for (var index = 0; index < args.Length; index++)
     }
     if (args[index].Equals("--replicaof", StringComparison.OrdinalIgnoreCase)){
         redisInfo.Role = ServerRole.Slave;
+        redisInfo.SetMasterEndpoint(args[index+1]);
     }
 }
 
@@ -39,6 +40,11 @@ var engine = new RedisEngine(rdbHandler, redisInfo);
 
 TcpListener server = new TcpListener(IPAddress.Any, port);
 server.Start();
+
+if (redisInfo.Role == ServerRole.Slave)
+{
+    await engine.ConnectToMasterAsync();
+}
 
 while (true)
 {

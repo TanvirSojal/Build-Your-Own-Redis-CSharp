@@ -1,6 +1,21 @@
+using System.Net;
+
 public class RedisInfo
 {
     public ServerRole Role { get; set; } = ServerRole.Master;
+    public IPEndPoint? MasterEndpoint { get; set; }
+
+    public void SetMasterEndpoint(string address){
+        var uriParts = address.Split(" ");
+        if (uriParts.Length > 0 && uriParts[0] == "localhost"){
+            uriParts[0] = "127.0.0.1";
+        }
+
+        var ip = IPAddress.Parse(uriParts[0]);
+        var port = int.Parse(uriParts[1]);
+
+        MasterEndpoint = new IPEndPoint(ip, port);
+    }
 
     public override string ToString()
     {
