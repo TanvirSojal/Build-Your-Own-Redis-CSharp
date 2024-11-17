@@ -51,7 +51,6 @@ public class RdbHandler
                 var database = ReadDatabase(reader);
 
                 RedisState.Databases.TryAdd(database.Index, database);
-
             }
         }
     }
@@ -60,20 +59,60 @@ public class RdbHandler
     {
         var database = new RedisDatabase();
 
-        var dbIndex = reader.ReadLengthEncodedInteger();
+        var dbIndex = reader.ReadEncodedLength();
 
-        if (int.TryParse(dbIndex, out var index))
-        {
-            database.Index = index;
-        }
+        database.Index = dbIndex;
 
         var resizedb = reader.ReadByte();
 
-        var hashSize = reader.ReadLengthEncodedInteger();
-        var expiryHashSize = reader.ReadLengthEncodedInteger();
+        var hashSize = reader.ReadEncodedLength();
+        var expiryHashSize = reader.ReadEncodedLength();
 
-        Console.WriteLine("hashSize " +  hashSize + " expiry hashSize " + expiryHashSize);
+        Console.WriteLine("hashSize " + hashSize + " expiry hashSize " + expiryHashSize);
+
+        for (var it = 0; it < (hashSize + expiryHashSize); it++)
+        {
+            var (key, value) = ReadKeyValue(reader);
+            database.Store.TryAdd(key, value);
+        }
 
         return database;
+    }
+
+    private (string, RedisValue) ReadKeyValue(BinaryReader reader)
+    {
+        var code = reader.ReadByte();
+
+        long? expiryInMs = null;
+        byte valueType;
+        string key;
+        string value;
+
+        if (code == RdbOpCodes.EXPIRETIME)
+        {
+            var expiryInSeconds = reader.ReadUInt32();
+            expiryInMs = expiryInSeconds * 1000;
+            valueType = reader.ReadByte();
+        }
+        else if (code == RdbOpCodes.EXPIRETIMEMS)
+        {
+            expiryInMs = reader.ReadUInt32();
+            valueType = reader.ReadByte();
+        }
+        else
+        {
+            valueType = code;
+
+        }
+
+        //if (valueType == RedisEncoding.STRING)
+        //{
+            key = reader.ReadLengthEncodedString();
+            value = reader.ReadLengthEncodedString();
+        //}
+
+        var redisValue = new RedisValue(value, expiryInMs);
+
+        return (key, redisValue);
     }
 }

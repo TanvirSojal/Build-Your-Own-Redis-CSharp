@@ -5,7 +5,8 @@ public class RedisDatabase
 
     public override string ToString()
     {
-        var result = $"__db_index: {Index}";
+        var result = $"__db_index: {Index}\n";
+        result += $"__keys_count: {Store.Count}\n";
         foreach (var kv in Store)
         {
             result += $"__key: {kv.Key} | __value: {kv.Value}\n";

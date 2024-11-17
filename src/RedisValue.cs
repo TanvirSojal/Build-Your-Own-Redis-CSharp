@@ -25,6 +25,6 @@ public class RedisValue
 
     public override string ToString()
     {
-        return $"{Value} | __created: {_createdAt} | __expiry: {Expiry}";
+        return $"{Value} | __expiry: {Expiry}";
     }
 }
