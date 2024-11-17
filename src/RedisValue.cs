@@ -2,12 +2,12 @@ public class RedisValue
 {
     private readonly DateTime _createdAt;
     public string Value { get; set; }
-    public long? ExpiryInMilliseconds { get; set; }
+    public ulong? ExpiryInMilliseconds { get; set; }
 
     private string Expiry => ExpiryInMilliseconds.HasValue ? ExpiryInMilliseconds.Value.ToString() : "never";
 
 
-    public RedisValue(string value, long? expiryInMilliseconds)
+    public RedisValue(string value, ulong? expiryInMilliseconds)
     {
         Value = value;
         ExpiryInMilliseconds = expiryInMilliseconds;

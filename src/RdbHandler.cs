@@ -63,12 +63,12 @@ public class RdbHandler
 
         var resizedb = reader.ReadByte();
 
-        var hashSize = reader.ReadEncodedLength();
+        var hashSize = reader.ReadEncodedLength(); // hashSize includes the expiry keys as well
         var expiryHashSize = reader.ReadEncodedLength();
 
         Console.WriteLine("hashSize " + hashSize + " expiry hashSize " + expiryHashSize);
 
-        for (var it = 0; it < (hashSize + expiryHashSize); it++)
+        for (var it = 0; it < hashSize; it++)
         {
             var (key, value) = ReadKeyValue(reader);
             database.Store.TryAdd(key, value);
@@ -81,7 +81,7 @@ public class RdbHandler
     {
         var code = reader.ReadByte();
 
-        long? expiryInMs = null;
+        ulong? expiryInMs = null;
         byte valueType;
         string key;
         string value;
@@ -94,8 +94,12 @@ public class RdbHandler
         }
         else if (code == RdbOpCodes.EXPIRETIMEMS)
         {
-            expiryInMs = reader.ReadUInt32();
+            expiryInMs = reader.ReadUInt64();
             valueType = reader.ReadByte();
+            //var date = (new DateTime(1970, 1, 1)).AddMilliseconds(TimeSpan.FromMilliseconds(expiryInMs.Value).Ticks);
+
+            Console.WriteLine($"Expiry in MS: {expiryInMs}");
+
         }
         else
         {
@@ -105,10 +109,10 @@ public class RdbHandler
 
         //if (valueType == RedisEncoding.STRING)
         //{
-            key = reader.ReadLengthEncodedString();
-            value = reader.ReadLengthEncodedString();
+        key = reader.ReadLengthEncodedString();
+        value = reader.ReadLengthEncodedString();
         //}
-
+        Console.WriteLine($"read -> Key: {key} value: {value}");
         var redisValue = new RedisValue(value, expiryInMs);
 
         return (key, redisValue);
