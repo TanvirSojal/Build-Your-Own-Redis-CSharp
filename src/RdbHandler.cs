@@ -81,22 +81,24 @@ public class RdbHandler
     {
         var code = reader.ReadByte();
 
-        ulong? expiryInMs = null;
+        double? expiryInMs = null;
         byte valueType;
         string key;
         string value;
 
         if (code == RdbOpCodes.EXPIRETIME)
         {
-            var expiryInSeconds = reader.ReadUInt32();
-            expiryInMs = expiryInSeconds * 1000;
+            var expiryInSeconds = reader.ReadUInt32() * 1000;
+            expiryInMs = double.Parse(expiryInSeconds.ToString());
+
             valueType = reader.ReadByte();
         }
         else if (code == RdbOpCodes.EXPIRETIMEMS)
         {
-            expiryInMs = reader.ReadUInt64();
+            var expiryInMilliseconds = reader.ReadUInt64();
+            expiryInMs = double.Parse(expiryInMilliseconds.ToString());
+
             valueType = reader.ReadByte();
-            //var date = (new DateTime(1970, 1, 1)).AddMilliseconds(TimeSpan.FromMilliseconds(expiryInMs.Value).Ticks);
 
             Console.WriteLine($"Expiry in MS: {expiryInMs}");
 
@@ -112,7 +114,6 @@ public class RdbHandler
         key = reader.ReadLengthEncodedString();
         value = reader.ReadLengthEncodedString();
         //}
-        Console.WriteLine($"read -> Key: {key} value: {value}");
         var redisValue = new RedisValue(value, expiryInMs);
 
         return (key, redisValue);

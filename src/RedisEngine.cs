@@ -26,7 +26,7 @@ public class RedisEngine
         var key = commands[4];
         var value = commands[6];
 
-        var expiry = (ulong?)null;
+        var expiry = (double?)null;
 
         if (commands.Length >= 10)
         {
@@ -34,7 +34,7 @@ public class RedisEngine
 
             if (argument.Equals("px", StringComparison.OrdinalIgnoreCase))
             {
-                expiry = ulong.Parse(commands[10]);
+                expiry = double.Parse(ulong.Parse(commands[10]).ToString());
             }
         }
 

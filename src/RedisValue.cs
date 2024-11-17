@@ -1,17 +1,21 @@
 public class RedisValue
 {
-    private readonly DateTime _createdAt;
+    private readonly DateTime _expiresAt;
     public string Value { get; set; }
-    public ulong? ExpiryInMilliseconds { get; set; }
+    public double? ExpiryInMilliseconds { get; set; }
 
-    private string Expiry => ExpiryInMilliseconds.HasValue ? ExpiryInMilliseconds.Value.ToString() : "never";
+    private string Expiry => ExpiryInMilliseconds.HasValue ? _expiresAt.ToString() : "never";
 
 
-    public RedisValue(string value, ulong? expiryInMilliseconds)
+    public RedisValue(string value, double? expiryInMilliseconds)
     {
         Value = value;
         ExpiryInMilliseconds = expiryInMilliseconds;
-        _createdAt = DateTime.UtcNow;
+
+        if (expiryInMilliseconds.HasValue){
+            _expiresAt = DateTime.UnixEpoch.AddMilliseconds(expiryInMilliseconds.Value);
+            Console.WriteLine($"Added key. Expires at: {DateTime.UnixEpoch.AddMilliseconds(expiryInMilliseconds.Value)}");
+        }
     }
 
     public bool IsExpired()
@@ -20,7 +24,7 @@ public class RedisValue
             return false;
         }
 
-        return (DateTime.UtcNow - _createdAt).TotalMilliseconds > ExpiryInMilliseconds.Value;
+        return DateTime.UtcNow > _expiresAt;
     }
 
     public override string ToString()
