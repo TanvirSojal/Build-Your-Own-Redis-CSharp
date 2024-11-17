@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 
 Console.WriteLine("Logs from your program will appear here!");
 
+var redisInfo = new RedisInfo();
 var port = 6379;
 
 var rdbConfig = new RdbConfiguration();
@@ -22,14 +23,17 @@ for (var index = 0; index < args.Length; index++)
     if (args[index].Equals("--port", StringComparison.OrdinalIgnoreCase)){
         port = int.Parse(args[index+1]);
     }
+    if (args[index].Equals("--replicaof", StringComparison.OrdinalIgnoreCase)){
+        redisInfo.Role = ServerRole.Slave;
+    }
 }
 
 var rdbHandler = new RdbHandler(rdbConfig);
 rdbHandler.RestoreSnapshot();
 
-Console.WriteLine(rdbHandler.RedisState);
+//Console.WriteLine(rdbHandler.RedisState);
 
-var engine = new RedisEngine(rdbHandler);
+var engine = new RedisEngine(rdbHandler, redisInfo);
 
 TcpListener server = new TcpListener(IPAddress.Any, port);
 server.Start();

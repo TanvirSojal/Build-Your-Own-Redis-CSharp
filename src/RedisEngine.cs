@@ -5,11 +5,12 @@ public class RedisEngine
 {
     private readonly int _defaultDbIndex = 0;
     private readonly RdbHandler _rdbHandler;
+    private readonly RedisInfo _redisInfo;
 
-
-    public RedisEngine(RdbHandler rdbHandler)
+    public RedisEngine(RdbHandler rdbHandler, RedisInfo redisInfo)
     {
         _rdbHandler = rdbHandler;
+        _redisInfo = redisInfo;
     }
 
     public async Task ProcessPingAsync(Socket socket, string[] commands)
