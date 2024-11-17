@@ -31,7 +31,9 @@ for (var index = 0; index < args.Length; index++)
 var rdbHandler = new RdbHandler(rdbConfig);
 rdbHandler.RestoreSnapshot();
 
-//Console.WriteLine(rdbHandler.RedisState);
+Console.WriteLine(rdbHandler.RedisState);
+
+//Console.WriteLine(redisInfo);
 
 var engine = new RedisEngine(rdbHandler, redisInfo);
 

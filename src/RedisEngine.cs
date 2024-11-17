@@ -116,7 +116,7 @@ public class RedisEngine
 
         if (argument.Equals("replication", StringComparison.OrdinalIgnoreCase))
         {
-            await SendSocketResponseAsync(socket, "role:master");
+            await SendSocketResponseAsync(socket, _redisInfo.ToString());
         }
     }
 
