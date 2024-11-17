@@ -34,7 +34,7 @@ public class RedisEngine
 
             if (argument.Equals("px", StringComparison.OrdinalIgnoreCase))
             {
-                expiry = double.Parse(ulong.Parse(commands[10]).ToString());
+                expiry = ulong.Parse(commands[10]) + (ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             }
         }
 
