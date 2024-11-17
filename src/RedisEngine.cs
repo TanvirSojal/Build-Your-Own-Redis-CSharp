@@ -3,8 +3,8 @@ using System.Text;
 
 public class RedisEngine
 {
+    private readonly int _defaultDbIndex = 0;
     private readonly RdbHandler _rdbHandler;
-    private Dictionary<string, RedisValue> store = new Dictionary<string, RedisValue>();
 
     public RedisEngine(RdbHandler rdbHandler)
     {
@@ -40,7 +40,9 @@ public class RedisEngine
 
         var valueToStore = new RedisValue(value, expiry);
 
-        if (store.TryAdd(key, valueToStore))
+        var db = GetDatabase();
+
+        if (db.Store.TryAdd(key, valueToStore))
         {
             await SendOkSocketResponseAsync(socket);
         }
@@ -54,11 +56,13 @@ public class RedisEngine
     {
         var key = commands[4];
 
-        if (store.TryGetValue(key, out var value))
+        var db = GetDatabase();
+
+        if (db.Store.TryGetValue(key, out var value))
         {
             if (value.IsExpired())
             {
-                store.Remove(key);
+                db.Store.Remove(key);
 
                 await SendNullSocketResponseAsync(socket);
             }
@@ -96,6 +100,25 @@ public class RedisEngine
         {
             await SendSocketResponseArrayAsync(socket, [argument, _rdbHandler.DbFileName]);
         }
+    }
+
+    public async Task ProcessKeysAsync(Socket socket, string[] commands)
+    {
+        var argument = commands[6];
+
+        if (argument.Equals("\"*\"", StringComparison.OrdinalIgnoreCase))
+        {
+            var db = GetDatabase();
+
+            var keys = db.Store.Keys;
+
+            await SendSocketResponseArrayAsync(socket, keys.ToArray());
+        }
+    }
+
+    private RedisDatabase GetDatabase()
+    {
+        return _rdbHandler.RedisState.Databases.GetValueOrDefault(_defaultDbIndex) ?? new RedisDatabase();
     }
 
     private string GetRedisBulkString(string payload) => $"${payload.Length}\r\n{payload}\r\n";

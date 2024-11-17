@@ -84,6 +84,10 @@ async Task HandleIncomingRequestAsync(Socket socket)
                 await engine.ProcessConfigAsync(socket, commands);
                 break;
 
+            case RedisProtocol.KEYS:
+                await engine.ProcessKeysAsync(socket, commands);
+                break;
+
             case RedisProtocol.NONE:
                 break;
             
@@ -101,6 +105,7 @@ RedisProtocol GetRedisProtocol(string protocol)
         RedisKeyword.SET => RedisProtocol.SET,
         RedisKeyword.GET => RedisProtocol.GET,
         RedisKeyword.CONFIG => RedisProtocol.CONFIG,
+        RedisKeyword.KEYS => RedisProtocol.KEYS,
         _ => RedisProtocol.NONE,
     };
 }

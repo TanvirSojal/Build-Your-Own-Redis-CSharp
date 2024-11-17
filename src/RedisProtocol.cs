@@ -5,5 +5,6 @@ public enum RedisProtocol
     ECHO,
     GET,
     SET,
-    CONFIG
+    CONFIG,
+    KEYS,
 }
