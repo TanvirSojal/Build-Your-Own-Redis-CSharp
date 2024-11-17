@@ -21,7 +21,7 @@ public class RedisState
 
     private string GetDatabases()
     {
-        var str = $"# Databases - {Databases.Count}\n";
+        var str = $"{Name} | #Databases: {Databases.Count}\n";
 
         foreach (var db in Databases)
         {

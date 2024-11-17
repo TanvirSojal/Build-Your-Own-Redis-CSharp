@@ -3,14 +3,12 @@ public class RdbHandler
     private readonly RdbConfiguration _rdbConfiguration;
     public string Directiory => _rdbConfiguration.Directiory;
     public string DbFileName => _rdbConfiguration.DbFileName;
-
-
-    public RedisState RedisState { get; private set; } = new();
-
+    public RedisState RedisState { get; private set; }
 
     public RdbHandler(RdbConfiguration config)
     {
         _rdbConfiguration = config;
+        RedisState = new();
     }
 
     public void RestoreSnapshot()

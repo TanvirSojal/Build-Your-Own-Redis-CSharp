@@ -58,6 +58,10 @@ public class RedisEngine
 
         var db = GetDatabase();
 
+        Console.WriteLine($"Key to get: {key}");
+
+        Console.WriteLine(db);
+
         if (db.Store.TryGetValue(key, out var value))
         {
             if (value.IsExpired())
@@ -120,7 +124,12 @@ public class RedisEngine
 
     private RedisDatabase GetDatabase()
     {
-        return _rdbHandler.RedisState.Databases.GetValueOrDefault(_defaultDbIndex) ?? new RedisDatabase();
+        if (!_rdbHandler.RedisState.Databases.TryGetValue(_defaultDbIndex, out var db)){
+            db = new RedisDatabase();
+            _rdbHandler.RedisState.Databases.TryAdd(_defaultDbIndex, db);
+        }
+
+        return db;
     }
 
     private string GetRedisBulkString(string payload) => $"${payload.Length}\r\n{payload}\r\n";

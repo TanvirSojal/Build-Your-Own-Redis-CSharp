@@ -33,16 +33,20 @@ while (true)
 {
     var acceptedSocket = await server.AcceptSocketAsync(); // wait for client
     Console.WriteLine("Accepted a new connection");
+
+    Console.WriteLine("Redis state now ->");
+    Console.WriteLine(rdbHandler.RedisState.Databases.Count);
+
     _ = Task.Run(async () => await HandleIncomingRequestAsync(acceptedSocket));
 }
 
 // *2\r\n$4\r\nECHO\r\n$3\r\nhey\r\n
 async Task HandleIncomingRequestAsync(Socket socket)
 {
-    var readBuffer = new byte[1024];
-
     while (true)
     {
+        var readBuffer = new byte[1024];
+
         await socket.ReceiveAsync(readBuffer);
 
         var request = Encoding.UTF8.GetString(readBuffer).TrimEnd('\0');
@@ -90,7 +94,6 @@ async Task HandleIncomingRequestAsync(Socket socket)
 
             case RedisProtocol.NONE:
                 break;
-            
         }
         
     }
