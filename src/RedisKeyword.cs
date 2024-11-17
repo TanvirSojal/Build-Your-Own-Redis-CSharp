@@ -7,4 +7,5 @@ public class RedisKeyword
     public const string PX = "px";
     public const string CONFIG = "config";
     public const string KEYS = "keys";
+    public const string INFO = "info";
 }

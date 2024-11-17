@@ -6,6 +6,7 @@ public class RedisEngine
     private readonly int _defaultDbIndex = 0;
     private readonly RdbHandler _rdbHandler;
 
+
     public RedisEngine(RdbHandler rdbHandler)
     {
         _rdbHandler = rdbHandler;
@@ -96,8 +97,6 @@ public class RedisEngine
     {
         var argument = commands[4];
 
-        Console.WriteLine($"Argument {argument}");
-
         if (argument.Equals("*", StringComparison.OrdinalIgnoreCase))
         {
             var db = GetDatabase();
@@ -107,6 +106,19 @@ public class RedisEngine
             await SendSocketResponseArrayAsync(socket, keys.ToArray());
         }
     }
+
+    public async Task ProcessInfoAsync(Socket socket, string[] commands)
+    {
+        var argument = commands[4];
+
+        Console.WriteLine($"Argument {argument}");
+
+        if (argument.Equals("replication", StringComparison.OrdinalIgnoreCase))
+        {
+            await SendSocketResponseAsync(socket, "role:master");
+        }
+    }
+
 
     private async Task ProcessConfigGetAsync(Socket socket, string[] commands)
     {
