@@ -9,4 +9,5 @@ public class RedisKeyword
     public const string KEYS = "keys";
     public const string INFO = "info";
     public const string REPLCONF = "replconf";
+    public const string PSYNC = "psync";
 }

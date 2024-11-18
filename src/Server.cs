@@ -114,6 +114,10 @@ async Task HandleIncomingRequestAsync(Socket socket)
                 await engine.ProcessReplConfAsync(socket, commands);
                 break;
 
+            case RedisProtocol.PSYNC:
+                await engine.ProcessPsyncAsync(socket, commands);
+                break;
+
             case RedisProtocol.NONE:
                 break;
         }

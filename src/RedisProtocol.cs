@@ -8,5 +8,6 @@ public enum RedisProtocol
     CONFIG,
     KEYS,
     INFO,
-    REPLCONF
+    REPLCONF,
+    PSYNC
 }

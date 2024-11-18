@@ -126,6 +126,12 @@ public class RedisEngine
         await SendOkSocketResponseAsync(socket);
     }
 
+    public async Task ProcessPsyncAsync(Socket socket, string[] commands)
+    {
+        var response = $"FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0"; // to be changed later
+        await SendSocketResponseAsync(socket, response);
+    }
+
     public async Task ConnectToMasterAsync()
     {
         if (_redisInfo.MasterEndpoint == null)
