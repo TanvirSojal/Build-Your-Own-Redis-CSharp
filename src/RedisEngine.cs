@@ -128,15 +128,6 @@ public class RedisEngine
 
     public async Task ConnectToMasterAsync()
     {
-        await SendCommandsToMasterAsync(["PING"]);
-
-        await SendCommandsToMasterAsync(["REPLCONF", "listening-port", _redisInfo.Port.ToString()]);
-
-        await SendCommandsToMasterAsync(["REPLCONF", "capa", "psync2"]);
-    }
-
-    private async Task SendCommandsToMasterAsync(string[] commands)
-    {
         if (_redisInfo.MasterEndpoint == null)
         {
             Console.WriteLine("No master specified.");
@@ -147,6 +138,16 @@ public class RedisEngine
 
         await socket.ConnectAsync(_redisInfo.MasterEndpoint);
 
+
+        await SendCommandsToMasterAsync(socket, ["PING"]);
+
+        await SendCommandsToMasterAsync(socket, ["REPLCONF", "listening-port", _redisInfo.Port.ToString()]);
+
+        await SendCommandsToMasterAsync(socket, ["REPLCONF", "capa", "psync2"]);
+    }
+
+    private async Task SendCommandsToMasterAsync(Socket socket, string[] commands)
+    {
         await SendSocketResponseArrayAsync(socket, commands);
 
         var buffer = new byte[1024];
@@ -154,6 +155,8 @@ public class RedisEngine
         await socket.ReceiveAsync(buffer);
 
         Console.WriteLine($"Received: {Encoding.UTF8.GetString(buffer)}");
+
+        //socket.Close();
     }
 
     private async Task ProcessConfigGetAsync(Socket socket, string[] commands)
