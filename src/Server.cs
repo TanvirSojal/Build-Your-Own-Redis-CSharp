@@ -137,6 +137,7 @@ RedisProtocol GetRedisProtocol(string protocol)
         RedisKeyword.KEYS => RedisProtocol.KEYS,
         RedisKeyword.INFO => RedisProtocol.INFO,
         RedisKeyword.REPLCONF => RedisProtocol.REPLCONF,
+        RedisKeyword.PSYNC => RedisProtocol.PSYNC,
         _ => RedisProtocol.NONE,
     };
 }
