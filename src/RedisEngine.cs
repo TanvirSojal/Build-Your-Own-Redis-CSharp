@@ -121,7 +121,21 @@ public class RedisEngine
         }
     }
 
+    public async Task ProcessReplConfAsync(Socket socket, string[] commands)
+    {
+        await SendOkSocketResponseAsync(socket);
+    }
+
     public async Task ConnectToMasterAsync()
+    {
+        await SendCommandsToMasterAsync(["PING"]);
+
+        await SendCommandsToMasterAsync(["REPLCONF", "listening-port", _redisInfo.Port.ToString()]);
+
+        await SendCommandsToMasterAsync(["REPLCONF", "capa", "psync2"]);
+    }
+
+    private async Task SendCommandsToMasterAsync(string[] commands)
     {
         if (_redisInfo.MasterEndpoint == null)
         {
@@ -129,11 +143,17 @@ public class RedisEngine
             return;
         }
 
-        var socket = new Socket(_redisInfo.MasterEndpoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+        using var socket = new Socket(_redisInfo.MasterEndpoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
 
         await socket.ConnectAsync(_redisInfo.MasterEndpoint);
 
-        await SendSocketResponseArrayAsync(socket, ["PING"]);
+        await SendSocketResponseArrayAsync(socket, commands);
+
+        var buffer = new byte[1024];
+
+        await socket.ReceiveAsync(buffer);
+
+        Console.WriteLine($"Received: {Encoding.UTF8.GetString(buffer)}");
     }
 
     private async Task ProcessConfigGetAsync(Socket socket, string[] commands)

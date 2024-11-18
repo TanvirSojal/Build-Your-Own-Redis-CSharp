@@ -7,5 +7,6 @@ public enum RedisProtocol
     SET,
     CONFIG,
     KEYS,
-    INFO
+    INFO,
+    REPLCONF
 }

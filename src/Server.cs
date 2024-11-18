@@ -3,10 +3,8 @@ using System.Net.Sockets;
 using System.Text;
 using System.Text.RegularExpressions;
 
-Console.WriteLine("Logs from your program will appear here!");
-
 var redisInfo = new RedisInfo();
-var port = 6379;
+redisInfo.Port = 6379;
 
 var rdbConfig = new RdbConfiguration();
 // Read CLI arguments
@@ -21,7 +19,7 @@ for (var index = 0; index < args.Length; index++)
         rdbConfig.DbFileName = args[index+1];
     }
     if (args[index].Equals("--port", StringComparison.OrdinalIgnoreCase)){
-        port = int.Parse(args[index+1]);
+        redisInfo.Port = int.Parse(args[index+1]);
     }
     if (args[index].Equals("--replicaof", StringComparison.OrdinalIgnoreCase)){
         redisInfo.Role = ServerRole.Slave;
@@ -32,14 +30,16 @@ for (var index = 0; index < args.Length; index++)
 var rdbHandler = new RdbHandler(rdbConfig);
 rdbHandler.RestoreSnapshot();
 
-Console.WriteLine(rdbHandler.RedisState);
+//Console.WriteLine(rdbHandler.RedisState);
 
 //Console.WriteLine(redisInfo);
 
 var engine = new RedisEngine(rdbHandler, redisInfo);
 
-TcpListener server = new TcpListener(IPAddress.Any, port);
+TcpListener server = new TcpListener(IPAddress.Any, redisInfo.Port);
 server.Start();
+
+Console.WriteLine($"Server started on port {redisInfo.Port}");
 
 if (redisInfo.Role == ServerRole.Slave)
 {
@@ -109,6 +109,10 @@ async Task HandleIncomingRequestAsync(Socket socket)
             case RedisProtocol.INFO:
                 await engine.ProcessInfoAsync(socket, commands);
                 break;
+            
+            case RedisProtocol.REPLCONF:
+                await engine.ProcessReplConfAsync(socket, commands);
+                break;
 
             case RedisProtocol.NONE:
                 break;
@@ -128,6 +132,7 @@ RedisProtocol GetRedisProtocol(string protocol)
         RedisKeyword.CONFIG => RedisProtocol.CONFIG,
         RedisKeyword.KEYS => RedisProtocol.KEYS,
         RedisKeyword.INFO => RedisProtocol.INFO,
+        RedisKeyword.REPLCONF => RedisProtocol.REPLCONF,
         _ => RedisProtocol.NONE,
     };
 }

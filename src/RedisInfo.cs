@@ -4,6 +4,7 @@ public class RedisInfo
 {
     public ServerRole Role { get; set; } = ServerRole.Master;
     public IPEndPoint? MasterEndpoint { get; set; }
+    public int Port { get; set; }
 
     public void SetMasterEndpoint(string address){
         var uriParts = address.Split(" ");
