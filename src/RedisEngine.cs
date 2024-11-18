@@ -138,12 +138,13 @@ public class RedisEngine
 
         await socket.ConnectAsync(_redisInfo.MasterEndpoint);
 
-
         await SendCommandsToMasterAsync(socket, ["PING"]);
 
         await SendCommandsToMasterAsync(socket, ["REPLCONF", "listening-port", _redisInfo.Port.ToString()]);
 
         await SendCommandsToMasterAsync(socket, ["REPLCONF", "capa", "psync2"]);
+
+        await SendCommandsToMasterAsync(socket, ["PSYNC", "?", "-1"]);
     }
 
     private async Task SendCommandsToMasterAsync(Socket socket, string[] commands)
