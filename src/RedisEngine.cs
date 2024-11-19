@@ -129,7 +129,7 @@ public class RedisEngine
     public async Task ProcessPsyncAsync(Socket socket, string[] commands)
     {
         var response = $"FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0"; // to be changed later
-        
+
         await SendSocketResponseAsync(socket, response);
 
         var currentRdb = _rdbHandler.GetCurrentStateAsRdb();
@@ -238,14 +238,16 @@ public class RedisEngine
         await socket.SendAsync(response, SocketFlags.None);
     }
 
-    private async Task SendRdbSocketResponseAsync(Socket socket, Stream steam)
+    private async Task SendRdbSocketResponseAsync(Socket socket, byte[] data)
     {
-        var reader = new StreamReader(steam);
-        var data  = await reader.ReadToEndAsync();
-        var bulkRdb = GetRedisRdbString(data);
+        var content = Encoding.UTF8.GetString(data);
 
-        Console.WriteLine($"Sending: [{bulkRdb}]");
-        var response = Encoding.Default.GetBytes(bulkRdb);
+        var rdbString = GetRedisRdbString(content);
+
+        Console.WriteLine($"Sending RDB: [{rdbString}]");
+
+        var response = Encoding.UTF8.GetBytes(rdbString);
+
         await socket.SendAsync(response, SocketFlags.None);
     }
 }
