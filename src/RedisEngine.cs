@@ -197,7 +197,6 @@ public class RedisEngine
     }
 
     private string GetRedisBulkString(string payload) => $"${payload.Length}\r\n{payload}\r\n";
-    private string GetRedisRdbString(string payload) => $"${payload.Length}\r\n{payload}";
     private string GetNullBulkString() => "$-1\r\n";
     private string GetOkResponseString() => "+OK\r\n";
     private string GetRedisBulkArray(string[] payload)
@@ -240,14 +239,10 @@ public class RedisEngine
 
     private async Task SendRdbSocketResponseAsync(Socket socket, byte[] data)
     {
-        var content = Encoding.UTF8.GetString(data);
-
-        var rdbString = GetRedisRdbString(content);
-
-        Console.WriteLine($"Sending RDB: [{rdbString}]");
-
-        var response = Encoding.UTF8.GetBytes(rdbString);
+        var response = Encoding.UTF8.GetBytes($"{data.Length}\r\n");
 
         await socket.SendAsync(response, SocketFlags.None);
+
+        await socket.SendAsync(data, SocketFlags.None);
     }
 }
