@@ -239,7 +239,7 @@ public class RedisEngine
 
     private async Task SendRdbSocketResponseAsync(Socket socket, byte[] data)
     {
-        var response = Encoding.UTF8.GetBytes($"{data.Length}\r\n");
+        var response = Encoding.UTF8.GetBytes($"${data.Length}\r\n");
 
         await socket.SendAsync(response, SocketFlags.None);
 
