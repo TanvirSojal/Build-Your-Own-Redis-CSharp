@@ -129,7 +129,12 @@ public class RedisEngine
     public async Task ProcessPsyncAsync(Socket socket, string[] commands)
     {
         var response = $"FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0"; // to be changed later
+        
         await SendSocketResponseAsync(socket, response);
+
+        var currentRdb = _rdbHandler.GetCurrentStateAsRdb();
+
+        await SendRdbSocketResponseAsync(socket, currentRdb);
     }
 
     public async Task ConnectToMasterAsync()
@@ -192,6 +197,7 @@ public class RedisEngine
     }
 
     private string GetRedisBulkString(string payload) => $"${payload.Length}\r\n{payload}\r\n";
+    private string GetRedisRdbString(string payload) => $"${payload.Length}\r\n{payload}";
     private string GetNullBulkString() => "$-1\r\n";
     private string GetOkResponseString() => "+OK\r\n";
     private string GetRedisBulkArray(string[] payload)
@@ -215,8 +221,8 @@ public class RedisEngine
 
     private async Task SendSocketResponseArrayAsync(Socket socket, string[] message)
     {
-        var bulkString = GetRedisBulkArray(message);
-        var response = Encoding.UTF8.GetBytes(bulkString);
+        var bulkArray = GetRedisBulkArray(message);
+        var response = Encoding.UTF8.GetBytes(bulkArray);
         await socket.SendAsync(response, SocketFlags.None);
     }
 
@@ -229,6 +235,13 @@ public class RedisEngine
     private async Task SendOkSocketResponseAsync(Socket socket)
     {
         var response = Encoding.UTF8.GetBytes(GetOkResponseString());
+        await socket.SendAsync(response, SocketFlags.None);
+    }
+
+    private async Task SendRdbSocketResponseAsync(Socket socket, string message)
+    {
+        var bulkRdb = GetRedisRdbString(message);
+        var response = Encoding.UTF8.GetBytes(bulkRdb);
         await socket.SendAsync(response, SocketFlags.None);
     }
 }
