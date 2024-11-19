@@ -238,10 +238,14 @@ public class RedisEngine
         await socket.SendAsync(response, SocketFlags.None);
     }
 
-    private async Task SendRdbSocketResponseAsync(Socket socket, string message)
+    private async Task SendRdbSocketResponseAsync(Socket socket, Stream steam)
     {
-        var bulkRdb = GetRedisRdbString(message);
-        var response = Encoding.UTF8.GetBytes(bulkRdb);
+        var reader = new StreamReader(steam);
+        var data  = await reader.ReadToEndAsync();
+        var bulkRdb = GetRedisRdbString(data);
+
+        Console.WriteLine($"Sending: [{bulkRdb}]");
+        var response = Encoding.Default.GetBytes(bulkRdb);
         await socket.SendAsync(response, SocketFlags.None);
     }
 }

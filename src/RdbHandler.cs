@@ -1,3 +1,5 @@
+using System.Text;
+
 public class RdbHandler
 {
     private readonly RdbConfiguration _rdbConfiguration;
@@ -53,9 +55,19 @@ public class RdbHandler
         }
     }
 
-    public string GetCurrentStateAsRdb()
+    public Stream GetCurrentStateAsRdb()
     {
-        return "UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHPAQPoFY3RpbWXCbQi8ZfoIdXNlZC1tZW3CsMQQAPoIYW9mLWJhc2XAAP/wbjv+wP9aog==";
+        var rdb = "UkVESVMwMDEx+glyZWRpcy12ZXIFNy4yLjD6CnJlZGlzLWJpdHPAQPoFY3RpbWXCbQi8ZfoIdXNlZC1tZW3CsMQQAPoIYW9mLWJhc2XAAP/wbjv+wP9aog==";
+    
+        var bytes = Encoding.UTF8.GetBytes(rdb);
+
+        var stream = new MemoryStream(bytes);
+
+        BinaryWriter writer = new BinaryWriter(stream);
+
+        writer.Write(bytes);
+
+        return stream;
     }
 
     private RedisDatabase ReadDatabase(BinaryReader reader)
