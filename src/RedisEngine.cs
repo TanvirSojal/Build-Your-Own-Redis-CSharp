@@ -182,7 +182,6 @@ public class RedisEngine
             await socket.ReceiveAsync(buffer);
 
             Console.WriteLine($"Received from Master: {Encoding.UTF8.GetString(buffer)}");
-
         }
     }
 

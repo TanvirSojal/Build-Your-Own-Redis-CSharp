@@ -130,9 +130,10 @@ async Task HandleIncomingRequestAsync(Socket socket)
         // propagate the commands
         if (protocol is RedisProtocol.SET)
         {
+            var propCommand = Encoding.UTF8.GetBytes(request);
             foreach (var replica in replicas)
             {
-                await replica.SendAsync(readBuffer, SocketFlags.None);
+                await replica.SendAsync(propCommand, SocketFlags.None);
             }
         }
 
