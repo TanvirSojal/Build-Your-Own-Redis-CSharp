@@ -1,17 +1,91 @@
-using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.RegularExpressions;
 
 public class RedisEngine
 {
     private readonly int _defaultDbIndex = 0;
     private readonly RdbHandler _rdbHandler;
     private readonly RedisInfo _redisInfo;
+    private readonly List<Socket> replicas = new List<Socket>();
 
     public RedisEngine(RdbHandler rdbHandler, RedisInfo redisInfo)
     {
         _rdbHandler = rdbHandler;
         _redisInfo = redisInfo;
+    }
+
+    public async Task ProcessCommandAsync(Socket socket, byte[] readBuffer)
+    {
+        var request = Encoding.UTF8.GetString(readBuffer).TrimEnd('\0');
+
+        Console.WriteLine($"received: [{request}] Length: {request.Length}");
+
+        var commands = Regex.Split(request, @"\s+");
+
+        var index = 0;
+
+        foreach (var command in commands)
+        {
+            Console.WriteLine($"{index++} {command}");
+        }
+
+        var protocol = GetRedisProtocol(commands);
+
+        Console.WriteLine($"Protocol: {protocol}");
+
+        switch (protocol)
+        {
+            case RedisProtocol.PING:
+                await ProcessPingAsync(socket, commands);
+                break;
+
+            case RedisProtocol.ECHO:
+                await ProcessEchoAsync(socket, commands);
+                break;
+
+            case RedisProtocol.SET:
+                await ProcessSetAsync(socket, commands);
+                break;
+
+            case RedisProtocol.GET:
+                await ProcessGetAsync(socket, commands);
+                break;
+
+            case RedisProtocol.CONFIG:
+                await ProcessConfigAsync(socket, commands);
+                break;
+
+            case RedisProtocol.KEYS:
+                await ProcessKeysAsync(socket, commands);
+                break;
+
+            case RedisProtocol.INFO:
+                await ProcessInfoAsync(socket, commands);
+                break;
+
+            case RedisProtocol.REPLCONF:
+                await ProcessReplConfAsync(socket, commands);
+                break;
+
+            case RedisProtocol.PSYNC:
+                await ProcessPsyncAsync(socket, commands);
+                replicas.Add(socket);
+                break;
+
+            case RedisProtocol.NONE:
+                break;
+        }
+
+        // propagate the commands
+        if (_redisInfo.Role == ServerRole.Master && protocol is RedisProtocol.SET)
+        {
+            var propCommand = Encoding.UTF8.GetBytes(request);
+            foreach (var replica in replicas)
+            {
+                await replica.SendAsync(propCommand, SocketFlags.None);
+            }
+        }
     }
 
     public async Task ProcessPingAsync(Socket socket, string[] commands)
@@ -215,6 +289,8 @@ public class RedisEngine
         return db;
     }
 
+
+    string GetRedisProtocol(string[] commands) => commands[2].ToLower();
     private string GetRedisBulkString(string payload) => $"${payload.Length}\r\n{payload}\r\n";
     private string GetNullBulkString() => "$-1\r\n";
     private string GetOkResponseString() => "+OK\r\n";
