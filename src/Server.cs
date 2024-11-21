@@ -12,18 +12,20 @@ for (var index = 0; index < args.Length; index++)
 {
     if (args[index].Equals("--dir", StringComparison.OrdinalIgnoreCase))
     {
-        rdbConfig.Directiory = args[index+1];
+        rdbConfig.Directiory = args[index + 1];
     }
     if (args[index].Equals("--dbfilename", StringComparison.OrdinalIgnoreCase))
     {
-        rdbConfig.DbFileName = args[index+1];
+        rdbConfig.DbFileName = args[index + 1];
     }
-    if (args[index].Equals("--port", StringComparison.OrdinalIgnoreCase)){
-        redisInfo.Port = int.Parse(args[index+1]);
+    if (args[index].Equals("--port", StringComparison.OrdinalIgnoreCase))
+    {
+        redisInfo.Port = int.Parse(args[index + 1]);
     }
-    if (args[index].Equals("--replicaof", StringComparison.OrdinalIgnoreCase)){
+    if (args[index].Equals("--replicaof", StringComparison.OrdinalIgnoreCase))
+    {
         redisInfo.Role = ServerRole.Slave;
-        redisInfo.SetMasterEndpoint(args[index+1]);
+        redisInfo.SetMasterEndpoint(args[index + 1]);
     }
 }
 
@@ -45,6 +47,8 @@ if (redisInfo.Role == ServerRole.Slave)
 {
     await engine.ConnectToMasterAsync();
 }
+
+var replicas = new List<Socket>();
 
 while (true)
 {
@@ -85,7 +89,7 @@ async Task HandleIncomingRequestAsync(Socket socket)
             case RedisProtocol.PING:
                 await engine.ProcessPingAsync(socket, commands);
                 break;
-            
+
             case RedisProtocol.ECHO:
                 await engine.ProcessEchoAsync(socket, commands);
                 break;
@@ -93,7 +97,7 @@ async Task HandleIncomingRequestAsync(Socket socket)
             case RedisProtocol.SET:
                 await engine.ProcessSetAsync(socket, commands);
                 break;
-            
+
             case RedisProtocol.GET:
                 await engine.ProcessGetAsync(socket, commands);
                 break;
@@ -109,19 +113,29 @@ async Task HandleIncomingRequestAsync(Socket socket)
             case RedisProtocol.INFO:
                 await engine.ProcessInfoAsync(socket, commands);
                 break;
-            
+
             case RedisProtocol.REPLCONF:
                 await engine.ProcessReplConfAsync(socket, commands);
                 break;
 
             case RedisProtocol.PSYNC:
                 await engine.ProcessPsyncAsync(socket, commands);
+                replicas.Add(socket);
                 break;
 
             case RedisProtocol.NONE:
                 break;
         }
-        
+
+        // propagate the commands
+        if (protocol is RedisProtocol.SET)
+        {
+            foreach (var replica in replicas)
+            {
+                await replica.SendAsync(readBuffer, SocketFlags.None);
+            }
+        }
+
     }
 }
 

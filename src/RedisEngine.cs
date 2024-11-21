@@ -156,6 +156,8 @@ public class RedisEngine
         await SendCommandsToMasterAsync(socket, ["REPLCONF", "capa", "psync2"]);
 
         await SendCommandsToMasterAsync(socket, ["PSYNC", "?", "-1"]);
+
+        await Task.Run(async () => await ReceiveCommandsFromMasterAsync(socket));
     }
 
     private async Task SendCommandsToMasterAsync(Socket socket, string[] commands)
@@ -169,6 +171,19 @@ public class RedisEngine
         Console.WriteLine($"Received: {Encoding.UTF8.GetString(buffer)}");
 
         //socket.Close();
+    }
+
+    private async Task ReceiveCommandsFromMasterAsync(Socket socket)
+    {
+        while (true)
+        {
+            var buffer = new byte[1024];
+
+            await socket.ReceiveAsync(buffer);
+
+            Console.WriteLine($"Received from Master: {Encoding.UTF8.GetString(buffer)}");
+
+        }
     }
 
     private async Task ProcessConfigGetAsync(Socket socket, string[] commands)
