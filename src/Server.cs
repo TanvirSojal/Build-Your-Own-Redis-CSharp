@@ -76,7 +76,7 @@ async Task HandleIncomingRequestAsync(Socket socket)
             Console.WriteLine($"{index++} {command}");
         }
 
-        var protocol = GetRedisProtocol(commands[2]);
+        var protocol = GetRedisProtocol(commands);
 
         Console.WriteLine($"Protocol: {protocol}");
 
@@ -125,19 +125,7 @@ async Task HandleIncomingRequestAsync(Socket socket)
     }
 }
 
-RedisProtocol GetRedisProtocol(string protocol)
+string GetRedisProtocol(string[] commands)
 {
-    return protocol.ToLower() switch
-    {
-        RedisKeyword.PING => RedisProtocol.PING,
-        RedisKeyword.ECHO => RedisProtocol.ECHO,
-        RedisKeyword.SET => RedisProtocol.SET,
-        RedisKeyword.GET => RedisProtocol.GET,
-        RedisKeyword.CONFIG => RedisProtocol.CONFIG,
-        RedisKeyword.KEYS => RedisProtocol.KEYS,
-        RedisKeyword.INFO => RedisProtocol.INFO,
-        RedisKeyword.REPLCONF => RedisProtocol.REPLCONF,
-        RedisKeyword.PSYNC => RedisProtocol.PSYNC,
-        _ => RedisProtocol.NONE,
-    };
+    return commands[2].ToLower();
 }
