@@ -1,4 +1,4 @@
 public enum ServerRole {
     Master,
-    Slave
+    Replica
 }
