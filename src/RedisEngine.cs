@@ -179,7 +179,12 @@ public class RedisEngine
         {
             var buffer = new byte[1024];
 
-            await socket.ReceiveAsync(buffer);
+            var bytesRead = await socket.ReceiveAsync(buffer);
+
+            if (bytesRead == 0)
+            {
+                break;
+            }
 
             Console.WriteLine($"Received from Master: {Encoding.UTF8.GetString(buffer)}");
         }

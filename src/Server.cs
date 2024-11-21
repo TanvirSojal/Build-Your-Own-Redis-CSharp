@@ -24,7 +24,7 @@ for (var index = 0; index < args.Length; index++)
     }
     if (args[index].Equals("--replicaof", StringComparison.OrdinalIgnoreCase))
     {
-        redisInfo.Role = ServerRole.Replica;
+        redisInfo.Role = ServerRole.Slave;
         redisInfo.SetMasterEndpoint(args[index + 1]);
     }
 }
@@ -43,7 +43,7 @@ server.Start();
 
 Console.WriteLine($"Server started on port {redisInfo.Port}");
 
-if (redisInfo.Role == ServerRole.Replica)
+if (redisInfo.Role == ServerRole.Slave)
 {
     await engine.ConnectToMasterAsync();
 }
