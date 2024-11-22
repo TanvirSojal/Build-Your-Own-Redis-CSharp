@@ -174,8 +174,6 @@ public class RedisEngine
                 {
                     Logger.Log($"Bytes received so far {_bytesSentByMasterSinceLastQuery}");
                     await SendSocketResponseArrayAsync(socket, ["REPLCONF", "ACK", $"{_bytesSentByMasterSinceLastQuery}"]);
-
-                    _bytesSentByMasterSinceLastQuery = 0;
                 }
             }
         }
@@ -273,18 +271,12 @@ public class RedisEngine
 
     private int GetLengthOfFullResyncAndRdbFile(byte[] readBuffer)
     {
-        var counter = 0;
 
         for (var index = 0; index < readBuffer.Length - 1; index++)
         {
-            if (readBuffer[index] == 0x0D && readBuffer[index + 1] == 0x0A)
+            if (readBuffer[index] == 0x2A) // the start of command '*' (not a robust solution)
             {
-                counter++;
-            }
-
-            if (counter == 3) // we skip the FULLRESYNC, RDB lengh and RDB content (3 breakpoints in total)
-            {
-                return index + 1;
+                return index;
             }
         }
 
@@ -327,7 +319,8 @@ public class RedisEngine
 
         if (commandBytes.Count > 0)
         {
-            foreach(var b in commandBytes){
+            foreach (var b in commandBytes)
+            {
                 Console.Write($"{b:x2} ");
             }
             Console.WriteLine("");
