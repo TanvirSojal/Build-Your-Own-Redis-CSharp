@@ -19,7 +19,7 @@ public class RedisEngine
     {
         var request = Encoding.UTF8.GetString(readBuffer).TrimEnd('\0');
 
-        Console.WriteLine($"received: [{request}] Length: {request.Length}");
+        Logger.Log($"received: [{request}] Length: {request.Length}");
 
         // return the protocol of the command executed
         // it will be used to determine whether the command should be propagated
@@ -51,7 +51,7 @@ public class RedisEngine
         var key = commands[4];
         var value = commands[6];
 
-        Console.WriteLine($"[{Thread.CurrentThread.Name}] Processing set -> __key: {key} __value: {value}");
+        Logger.Log($"[{Thread.CurrentThread.ManagedThreadId}] Processing set -> __key: {key} __value: {value}");
 
         var expiry = (double?)null;
 
@@ -92,15 +92,15 @@ public class RedisEngine
 
         var db = GetDatabase();
 
-        Console.WriteLine($"[{Thread.CurrentThread.Name}] Key to get: {key}");
+        Logger.Log($"Key to get: {key}");
 
-        Console.WriteLine($"[{Thread.CurrentThread.Name}]\n{db}");
+        Logger.Log(db);
 
         if (db.Store.TryGetValue(key, out var value))
         {
             if (value.IsExpired())
             {
-                db.Store.Remove(key);
+                db.Store.TryRemove(key, out var _);
 
                 await SendNullSocketResponseAsync(socket);
             }
@@ -144,7 +144,7 @@ public class RedisEngine
     {
         var argument = commands[4];
 
-        Console.WriteLine($"Argument {argument}");
+        Logger.Log($"Argument {argument}");
 
         if (argument.Equals("replication", StringComparison.OrdinalIgnoreCase))
         {
@@ -190,7 +190,7 @@ public class RedisEngine
     {
         if (_redisInfo.MasterEndpoint == null)
         {
-            Console.WriteLine("No master specified.");
+            Logger.Log("No master specified.");
             return;
         }
 
@@ -220,7 +220,7 @@ public class RedisEngine
 
             await socket.ReceiveAsync(buffer);
 
-            Console.WriteLine($"Received: {Encoding.UTF8.GetString(buffer)}");
+            Logger.Log($"Received: {Encoding.UTF8.GetString(buffer)}");
         }
     }
 
@@ -237,7 +237,7 @@ public class RedisEngine
                 break;
             }
 
-            Console.WriteLine($"Received from Master: {Encoding.UTF8.GetString(readBuffer)}");
+            Logger.Log($"Received from Master: {Encoding.UTF8.GetString(readBuffer)}");
 
             var commands = GetCommandsFromBufferAsync(readBuffer);
 
@@ -256,7 +256,7 @@ public class RedisEngine
 
         var request = Encoding.UTF8.GetString(readBuffer).TrimEnd('\0');
 
-        Console.WriteLine(request);
+        Logger.Log(request);
 
         var commandStarted = false;
         var command = "";
@@ -292,11 +292,11 @@ public class RedisEngine
         }
 
 
-        Console.WriteLine("Extracted the following commands:");
+        Logger.Log("Extracted the following commands:");
 
         foreach (var c in commands)
         {
-            Console.WriteLine($"Command > {c}");
+            Logger.Log($"Command > {c}");
         }
 
         return commands;
@@ -335,12 +335,12 @@ public class RedisEngine
 
         foreach (var command in commands)
         {
-            Console.WriteLine($"{index++} {command}");
+            Logger.Log($"{index++} {command}");
         }
 
         var protocol = GetRedisProtocol(commands);
 
-        Console.WriteLine($"Protocol: {protocol}");
+        Logger.Log($"Protocol: {protocol}");
 
         switch (protocol)
         {

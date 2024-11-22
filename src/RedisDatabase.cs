@@ -1,7 +1,9 @@
+using System.Collections.Concurrent;
+
 public class RedisDatabase
 {
-    public int Index { get; set; }
-    public IDictionary<string, RedisValue> Store { get; set; } = new Dictionary<string, RedisValue>();
+    public int Index { get; set; } = 0;
+    public ConcurrentDictionary<string, RedisValue> Store { get; set; } = new ConcurrentDictionary<string, RedisValue>();
 
     public override string ToString()
     {
