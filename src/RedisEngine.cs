@@ -261,14 +261,20 @@ public class RedisEngine
         var commandStarted = false;
         var command = "";
 
-        foreach (var ch in request)
+        for (var index = 0; index < request.Length; index++)
         {
+            var ch = request[index];
+
             if (ch == '*')
             {
-                if (command.Length > 0)
+                // check that it is a beginning of a RESP array, not a subcommand
+                if (index + 1 < request.Length && request[index + 1] != '\r')
                 {
-                    commands.Add(command);
-                    command = "";
+                    if (command.Length > 0)
+                    {
+                        commands.Add(command);
+                        command = "";
+                    }
                 }
 
                 command += ch;
