@@ -8,6 +8,8 @@ public class RedisEngine
     private readonly RdbHandler _rdbHandler;
     private readonly RedisInfo _redisInfo;
     private readonly List<Socket> replicas = new List<Socket>();
+
+    private bool _rdbReceivedFromMaster = false;
     private int _bytesSentByMasterSinceLastQuery = 0;
 
     public RedisEngine(RdbHandler rdbHandler, RedisInfo redisInfo)
@@ -24,7 +26,7 @@ public class RedisEngine
 
         // return the protocol of the command executed
         // it will be used to determine whether the command should be propagated
-        string protocol = await ExecuteCommandAsync(socket, request);
+        string protocol = await ExecuteCommandAsync(socket, new RedisRequest { CommandString = request });
 
         // propagate the commands
         if (_redisInfo.Role == ServerRole.Master && protocol is RedisProtocol.SET)
@@ -37,8 +39,13 @@ public class RedisEngine
         }
     }
 
-    public async Task ProcessPingAsync(Socket socket, string[] commands)
+    public async Task ProcessPingAsync(Socket socket, string[] commands, bool fromMaster)
     {
+        if (fromMaster)
+        {
+            return;
+        }
+
         await SendSocketResponseAsync(socket, "PONG");
     }
 
@@ -165,7 +172,8 @@ public class RedisEngine
 
                 if (argument.Equals("*", StringComparison.OrdinalIgnoreCase))
                 {
-                    await SendSocketResponseArrayAsync(socket, ["REPLCONF", "ACK", _bytesSentByMasterSinceLastQuery.ToString()]);
+                    Logger.Log($"Bytes received so far {_bytesSentByMasterSinceLastQuery}");
+                    await SendSocketResponseArrayAsync(socket, ["REPLCONF", "ACK", $"{_bytesSentByMasterSinceLastQuery}"]);
 
                     _bytesSentByMasterSinceLastQuery = 0;
                 }
@@ -235,9 +243,6 @@ public class RedisEngine
 
             var bytesRead = await socket.ReceiveAsync(readBuffer);
 
-            // cumulative bytes sent from master since last "REPLCONF GETACK *" query
-            _bytesSentByMasterSinceLastQuery += bytesRead;
-
             if (bytesRead == 0)
             {
                 break;
@@ -245,64 +250,99 @@ public class RedisEngine
 
             Logger.Log($"Received from Master: {Encoding.UTF8.GetString(readBuffer)}");
 
-            var commands = GetCommandsFromBufferAsync(readBuffer);
+            var commandProcessingStartIndex = 0;
+
+            if (!_rdbReceivedFromMaster)
+            {
+                commandProcessingStartIndex = GetLengthOfFullResyncAndRdbFile(readBuffer);
+
+                if (commandProcessingStartIndex > 0)
+                {
+                    _rdbReceivedFromMaster = true;
+                }
+            }
+
+            var commands = GetCommandsFromBufferAsync(readBuffer, commandProcessingStartIndex);
 
             foreach (var command in commands)
             {
                 await ExecuteCommandAsync(socket, command, fromMaster: true);
             }
-
         }
     }
 
-    // handle buffer that contains multiple commands
-    private List<string> GetCommandsFromBufferAsync(byte[] readBuffer)
+    private int GetLengthOfFullResyncAndRdbFile(byte[] readBuffer)
     {
-        var commands = new List<string>();
+        var counter = 0;
 
-        var request = Encoding.UTF8.GetString(readBuffer).TrimEnd('\0');
-
-        Logger.Log(request);
-
-        var commandStarted = false;
-        var command = "";
-
-        for (var index = 0; index < request.Length; index++)
+        for (var index = 0; index < readBuffer.Length - 1; index++)
         {
-            var ch = request[index];
-
-            if (ch == '*')
+            if (readBuffer[index] == 0x0D && readBuffer[index + 1] == 0x0A)
             {
-                // check that it is a beginning of a RESP array, not a subcommand
-                if (index + 1 < request.Length && request[index + 1] != '\r')
+                counter++;
+            }
+
+            if (counter == 3) // we skip the FULLRESYNC, RDB lengh and RDB content (3 breakpoints in total)
+            {
+                return index + 1;
+            }
+        }
+
+        return 0;
+    }
+
+    // handle buffer that contains multiple commands
+    private List<RedisRequest> GetCommandsFromBufferAsync(byte[] readBuffer, int startIndex)
+    {
+        var commands = new List<RedisRequest>();
+
+        var commandBytes = new List<byte>();
+
+        for (var index = startIndex; index < readBuffer.Length; index++)
+        {
+            if (readBuffer[index] == 0x00) // handle null character '/0' 
+            {
+                break;
+            }
+
+            if (readBuffer[index] == 0x2A) // check for "*" (start of a new RESP array)
+            {
+                // validate that it is a beginning of a RESP array, not a subcommand
+                if (index + 1 < readBuffer.Length && readBuffer[index + 1] != 0x0D)
                 {
-                    if (command.Length > 0)
+                    if (commandBytes.Count > 0)
                     {
-                        commands.Add(command);
-                        command = "";
+                        var command = Encoding.UTF8.GetString([.. commandBytes]);
+                        commands.Add(new RedisRequest { CommandString = command, ByteLength = commandBytes.Count });
+
+                        Logger.Log($"Redis request length is (inner) {commandBytes.Count}");
+
+                        commandBytes.Clear();
                     }
                 }
+            }
 
-                command += ch;
-                commandStarted = true;
-            }
-            else if (commandStarted)
-            {
-                command += ch;
-            }
+            commandBytes.Add(readBuffer[index]);
         }
 
-        if (command.Length > 0)
+        if (commandBytes.Count > 0)
         {
-            commands.Add(command);
+            foreach(var b in commandBytes){
+                Console.Write($"{b:x2} ");
+            }
+            Console.WriteLine("");
+
+            Logger.Log($"Redis request length is (outer) {commandBytes.Count}");
+
+            var command = Encoding.UTF8.GetString([.. commandBytes]);
+            commands.Add(new RedisRequest { CommandString = command, ByteLength = commandBytes.Count });
         }
 
-
-        Logger.Log("Extracted the following commands:");
+        Logger.Log($"Extracted the following commands: {commands.Count}");
 
         foreach (var c in commands)
         {
-            Logger.Log($"Command > {c}");
+            Logger.Log($"Command > {c.CommandString}");
         }
 
         return commands;
@@ -333,9 +373,9 @@ public class RedisEngine
         return db;
     }
 
-    private async Task<string> ExecuteCommandAsync(Socket socket, string request, bool fromMaster = false)
+    private async Task<string> ExecuteCommandAsync(Socket socket, RedisRequest request, bool fromMaster = false)
     {
-        var commands = Regex.Split(request, @"\s+");
+        var commands = Regex.Split(request.CommandString, @"\s+");
 
         var index = 0;
 
@@ -351,7 +391,7 @@ public class RedisEngine
         switch (protocol)
         {
             case RedisProtocol.PING:
-                await ProcessPingAsync(socket, commands);
+                await ProcessPingAsync(socket, commands, fromMaster);
                 break;
 
             case RedisProtocol.ECHO:
@@ -389,6 +429,15 @@ public class RedisEngine
 
             case RedisProtocol.NONE:
                 break;
+        }
+
+        if (fromMaster)
+        {
+            // add to cumulative sum of bytes received from master
+            Logger.Log($"Byte sum before {_bytesSentByMasterSinceLastQuery} + request length {request.ByteLength}");
+            _bytesSentByMasterSinceLastQuery += request.ByteLength;
+
+            Logger.Log($"Byte sum after {_bytesSentByMasterSinceLastQuery}");
         }
 
         return protocol;
