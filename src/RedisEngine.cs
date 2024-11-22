@@ -51,7 +51,7 @@ public class RedisEngine
         var key = commands[4];
         var value = commands[6];
 
-        Console.WriteLine($"Processing set -> __key: {key} __value: {value}");
+        Console.WriteLine($"[{Thread.CurrentThread}] Processing set -> __key: {key} __value: {value}");
 
         var expiry = (double?)null;
 
@@ -92,9 +92,9 @@ public class RedisEngine
 
         var db = GetDatabase();
 
-        Console.WriteLine($"Key to get: {key}");
+        Console.WriteLine($"[{Thread.CurrentThread}] Key to get: {key}");
 
-        Console.WriteLine(db);
+        Console.WriteLine($"[{Thread.CurrentPrincipal}]\n{db}");
 
         if (db.Store.TryGetValue(key, out var value))
         {
