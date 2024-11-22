@@ -8,6 +8,7 @@ public class RedisEngine
     private readonly RdbHandler _rdbHandler;
     private readonly RedisInfo _redisInfo;
     private readonly List<Socket> replicas = new List<Socket>();
+    private int _bytesSentByMasterSinceLastQuery = 0;
 
     public RedisEngine(RdbHandler rdbHandler, RedisInfo redisInfo)
     {
@@ -164,7 +165,9 @@ public class RedisEngine
 
                 if (argument.Equals("*", StringComparison.OrdinalIgnoreCase))
                 {
-                    await SendSocketResponseArrayAsync(socket, ["REPLCONF", "ACK", "0"]);
+                    await SendSocketResponseArrayAsync(socket, ["REPLCONF", "ACK", _bytesSentByMasterSinceLastQuery.ToString()]);
+
+                    _bytesSentByMasterSinceLastQuery = 0;
                 }
             }
         }
@@ -231,6 +234,9 @@ public class RedisEngine
             var readBuffer = new byte[1024];
 
             var bytesRead = await socket.ReceiveAsync(readBuffer);
+
+            // cumulative bytes sent from master since last "REPLCONF GETACK *" query
+            _bytesSentByMasterSinceLastQuery += bytesRead;
 
             if (bytesRead == 0)
             {
