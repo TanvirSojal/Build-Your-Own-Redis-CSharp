@@ -39,7 +39,8 @@ Console.WriteLine($"Server started on port {redisInfo.Port}");
 
 if (redisInfo.Role == ServerRole.Slave)
 {
-    await engine.ConnectToMasterAsync();
+    // handshake to master and receive propagated commands in a separate thread
+    _ = Task.Run(engine.ConnectToMasterAsync);
 }
 
 var replicas = new List<Socket>();
@@ -61,6 +62,6 @@ async Task HandleIncomingRequestAsync(Socket socket)
 
         await socket.ReceiveAsync(readBuffer);
 
-        await engine.ProcessCommandAsync(socket, readBuffer);
+        await engine.ProcessRequestAsync(socket, readBuffer);
     }
 }
