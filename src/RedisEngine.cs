@@ -152,9 +152,9 @@ public class RedisEngine
         }
     }
 
-    public async Task ProcessReplConfAsync(Socket socket, string[] commands)
+    public async Task ProcessReplConfAsync(Socket socket, string[] commands, bool fromMaster)
     {
-        if (commands.Length >= 6)
+        if (fromMaster)
         {
             var subCommand = commands[4];
 
@@ -373,7 +373,7 @@ public class RedisEngine
                 break;
 
             case RedisProtocol.REPLCONF:
-                await ProcessReplConfAsync(socket, commands);
+                await ProcessReplConfAsync(socket, commands, fromMaster);
                 break;
 
             case RedisProtocol.PSYNC:
