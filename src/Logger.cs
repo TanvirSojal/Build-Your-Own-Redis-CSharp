@@ -10,7 +10,7 @@ public static class Logger
         Console.WriteLine($"{GetCurrentDateTime()} | thread_id: [{Thread.CurrentThread.ManagedThreadId}] {value}");
     }
 
-    private string GetCurrentDateTime()
+    private static string GetCurrentDateTime()
     {
         return DateTime.UtcNow.ToString("HH:mm:ss.fff");
     }
