@@ -154,7 +154,25 @@ public class RedisEngine
 
     public async Task ProcessReplConfAsync(Socket socket, string[] commands)
     {
-        await SendOkSocketResponseAsync(socket);
+        if (commands.Length >= 6)
+        {
+            var subCommand = commands[4];
+
+            if (subCommand.Equals("GETACK", StringComparison.OrdinalIgnoreCase))
+            {
+                var argument = commands[6];
+
+                if (argument.Equals("*", StringComparison.OrdinalIgnoreCase))
+                {
+                    await SendSocketResponseArrayAsync(socket, ["REPLCONF", "ACK", "0"]);
+                }
+            }
+        }
+        else
+        {
+            await SendOkSocketResponseAsync(socket);
+        }
+
     }
 
     public async Task ProcessPsyncAsync(Socket socket, string[] commands)
