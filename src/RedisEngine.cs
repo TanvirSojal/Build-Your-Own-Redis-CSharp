@@ -46,12 +46,12 @@ public class RedisEngine
             return;
         }
 
-        await SendSocketResponseAsync(socket, "PONG");
+        await SendBulkStringSocketResponseAsync(socket, "PONG");
     }
 
     public async Task ProcessEchoAsync(Socket socket, string[] commands)
     {
-        await SendSocketResponseAsync(socket, commands[4]);
+        await SendBulkStringSocketResponseAsync(socket, commands[4]);
     }
 
     public async Task ProcessSetAsync(Socket socket, string[] commands, bool fromMaster)
@@ -115,7 +115,7 @@ public class RedisEngine
 
             else
             {
-                await SendSocketResponseAsync(socket, value.Value);
+                await SendBulkStringSocketResponseAsync(socket, value.Value);
             }
         }
         else
@@ -144,7 +144,7 @@ public class RedisEngine
 
             var keys = db.Store.Keys;
 
-            await SendSocketResponseArrayAsync(socket, keys.ToArray());
+            await SendArraySocketResponseAsync(socket, keys.ToArray());
         }
     }
 
@@ -156,7 +156,7 @@ public class RedisEngine
 
         if (argument.Equals("replication", StringComparison.OrdinalIgnoreCase))
         {
-            await SendSocketResponseAsync(socket, _redisInfo.ToString());
+            await SendBulkStringSocketResponseAsync(socket, _redisInfo.ToString());
         }
     }
 
@@ -173,7 +173,7 @@ public class RedisEngine
                 if (argument.Equals("*", StringComparison.OrdinalIgnoreCase))
                 {
                     Logger.Log($"Bytes received so far {_bytesSentByMasterSinceLastQuery}");
-                    await SendSocketResponseArrayAsync(socket, ["REPLCONF", "ACK", $"{_bytesSentByMasterSinceLastQuery}"]);
+                    await SendArraySocketResponseAsync(socket, ["REPLCONF", "ACK", $"{_bytesSentByMasterSinceLastQuery}"]);
                 }
             }
         }
@@ -188,11 +188,25 @@ public class RedisEngine
     {
         var response = $"FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0"; // to be changed later
 
-        await SendSocketResponseAsync(socket, response);
+        await SendBulkStringSocketResponseAsync(socket, response);
 
         var currentRdb = _rdbHandler.GetCurrentStateAsRdb();
 
         await SendRdbSocketResponseAsync(socket, currentRdb);
+    }
+
+    private async Task ProcessWaitAsync(Socket socket, string[] commands)
+    {
+        if (commands.Length < 6)
+        {
+            return;
+        }
+
+        var numOfReplicas = commands[4];
+
+        var timeout = commands[6];
+
+        await SendIntegerSocketResponseAsync(socket, 0);
     }
 
     public async Task ConnectToMasterAsync()
@@ -220,7 +234,7 @@ public class RedisEngine
 
     private async Task SendCommandsToMasterAsync(Socket socket, string[] commands, bool receiveImmediateResponse = true)
     {
-        await SendSocketResponseArrayAsync(socket, commands);
+        await SendArraySocketResponseAsync(socket, commands);
 
         // for PSYNC command, we will receive response in a different thread that will run continuously
         if (receiveImmediateResponse)
@@ -347,11 +361,11 @@ public class RedisEngine
 
         if (argument.Equals("dir", StringComparison.OrdinalIgnoreCase))
         {
-            await SendSocketResponseArrayAsync(socket, [argument, _rdbHandler.Directiory]);
+            await SendArraySocketResponseAsync(socket, [argument, _rdbHandler.Directiory]);
         }
         else if (argument.Equals("dbfilename", StringComparison.OrdinalIgnoreCase))
         {
-            await SendSocketResponseArrayAsync(socket, [argument, _rdbHandler.DbFileName]);
+            await SendArraySocketResponseAsync(socket, [argument, _rdbHandler.DbFileName]);
         }
     }
 
@@ -420,6 +434,10 @@ public class RedisEngine
                 replicas.Add(socket);
                 break;
 
+            case RedisProtocol.WAIT:
+                await ProcessWaitAsync(socket, commands);
+                break;
+
             case RedisProtocol.NONE:
                 break;
         }
@@ -440,6 +458,7 @@ public class RedisEngine
     private string GetRedisBulkString(string payload) => $"${payload.Length}\r\n{payload}\r\n";
     private string GetNullBulkString() => "$-1\r\n";
     private string GetOkResponseString() => "+OK\r\n";
+    private string GetRespInteger(long number) => $":{number}\r\n";
     private string GetRedisBulkArray(string[] payload)
     {
         var response = $"*{payload.Length}\r\n";
@@ -452,30 +471,32 @@ public class RedisEngine
         return response;
     }
 
-    private async Task SendSocketResponseAsync(Socket socket, string message)
+    private async Task SendBulkStringSocketResponseAsync(Socket socket, string message)
     {
         var bulkString = GetRedisBulkString(message);
-        var response = Encoding.UTF8.GetBytes(bulkString);
-        await socket.SendAsync(response, SocketFlags.None);
+        await SendSocketResponseAsync(socket, bulkString);
     }
 
-    private async Task SendSocketResponseArrayAsync(Socket socket, string[] message)
+    private async Task SendArraySocketResponseAsync(Socket socket, string[] message)
     {
         var bulkArray = GetRedisBulkArray(message);
-        var response = Encoding.UTF8.GetBytes(bulkArray);
-        await socket.SendAsync(response, SocketFlags.None);
+        await SendSocketResponseAsync(socket, bulkArray);
+    }
+
+    private async Task SendIntegerSocketResponseAsync(Socket socket, long number)
+    {
+        var integer = GetRespInteger(number);
+        await SendSocketResponseAsync(socket, integer);
     }
 
     private async Task SendNullSocketResponseAsync(Socket socket)
     {
-        var response = Encoding.UTF8.GetBytes(GetNullBulkString());
-        await socket.SendAsync(response, SocketFlags.None);
+        await SendSocketResponseAsync(socket, GetNullBulkString());
     }
 
     private async Task SendOkSocketResponseAsync(Socket socket)
     {
-        var response = Encoding.UTF8.GetBytes(GetOkResponseString());
-        await socket.SendAsync(response, SocketFlags.None);
+        await SendSocketResponseAsync(socket, GetOkResponseString());
     }
 
     private async Task SendRdbSocketResponseAsync(Socket socket, byte[] data)
@@ -485,5 +506,11 @@ public class RedisEngine
         await socket.SendAsync(response, SocketFlags.None);
 
         await socket.SendAsync(data, SocketFlags.None);
+    }
+
+    private static async Task SendSocketResponseAsync(Socket socket, string payload)
+    {
+        var response = Encoding.UTF8.GetBytes(payload);
+        await socket.SendAsync(response, SocketFlags.None);
     }
 }

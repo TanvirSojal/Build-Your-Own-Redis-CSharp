@@ -11,4 +11,5 @@ public class RedisProtocol
     public const string INFO = "info";
     public const string REPLCONF = "replconf";
     public const string PSYNC = "psync";
+    public const string WAIT = "wait";
 }
