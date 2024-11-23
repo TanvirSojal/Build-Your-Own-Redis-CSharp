@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -12,6 +13,8 @@ public class RedisEngine
     private bool _rdbReceivedFromMaster = false;
     private int _bytesSentByMasterSinceLastQuery = 0;
 
+    private Dictionary<int, int> _replicaAckByThreadDictionary = new Dictionary<int, int>();
+
     public RedisEngine(RdbHandler rdbHandler, RedisInfo redisInfo)
     {
         _rdbHandler = rdbHandler;
@@ -24,19 +27,14 @@ public class RedisEngine
 
         Logger.Log($"received: [{request}] Length: {request.Length}");
 
+        var propagationStatus = new PropagationStatus();
+
         // return the protocol of the command executed
         // it will be used to determine whether the command should be propagated
-        string protocol = await ExecuteCommandAsync(socket, new RedisRequest { CommandString = request });
+        string protocol = await ExecuteCommandAsync(socket, new RedisRequest { CommandString = request }, propagationStatus);
 
         // propagate the commands
-        if (_redisInfo.Role == ServerRole.Master && protocol is RedisProtocol.SET)
-        {
-            var propCommand = Encoding.UTF8.GetBytes(request);
-            foreach (var replica in _connectedReplicas)
-            {
-                await replica.SendAsync(propCommand, SocketFlags.None);
-            }
-        }
+        await PropagateToReplicaAsync(request, protocol, propagationStatus);
     }
 
     public async Task ProcessPingAsync(Socket socket, string[] commands, bool fromMaster)
@@ -195,20 +193,28 @@ public class RedisEngine
         await SendRdbSocketResponseAsync(socket, currentRdb);
     }
 
-    private async Task ProcessWaitAsync(Socket socket, string[] commands)
+    private async Task ProcessWaitAsync(Socket socket, string[] commands, PropagationStatus propagationStatus)
     {
         if (commands.Length < 6)
         {
             return;
         }
 
-        var numOfReplicas = commands[4];
+        var numOfReplicas = int.Parse(commands[4]);
 
-        var timeout = commands[6];
+        var timeout = long.Parse(commands[6]);
 
-        var connectedReplicaCount = _connectedReplicas.Count;
+        var stopwatch = new Stopwatch();
 
-        await SendIntegerSocketResponseAsync(socket, connectedReplicaCount);
+        stopwatch.Start();
+
+        // wait until timeout ms or specified replicas have acknowledged command
+        while (stopwatch.Elapsed.TotalMilliseconds < timeout && propagationStatus.NumberOfReplicasAcknowledged < numOfReplicas)
+        {
+            //Logger.Log("waiting...");
+        }
+
+        await SendIntegerSocketResponseAsync(socket, propagationStatus.NumberOfReplicasAcknowledged);
     }
 
     public async Task ConnectToMasterAsync()
@@ -280,7 +286,7 @@ public class RedisEngine
 
             foreach (var command in commands)
             {
-                await ExecuteCommandAsync(socket, command, fromMaster: true);
+                await ExecuteCommandAsync(socket, command, new PropagationStatus(), fromMaster: true);
             }
         }
     }
@@ -382,7 +388,7 @@ public class RedisEngine
         return db;
     }
 
-    private async Task<string> ExecuteCommandAsync(Socket socket, RedisRequest request, bool fromMaster = false)
+    private async Task<string> ExecuteCommandAsync(Socket socket, RedisRequest request, PropagationStatus propagationStatus, bool fromMaster = false)
     {
         var commands = Regex.Split(request.CommandString, @"\s+");
 
@@ -437,7 +443,7 @@ public class RedisEngine
                 break;
 
             case RedisProtocol.WAIT:
-                await ProcessWaitAsync(socket, commands);
+                await ProcessWaitAsync(socket, commands, propagationStatus);
                 break;
 
             case RedisProtocol.NONE:
@@ -454,6 +460,26 @@ public class RedisEngine
         }
 
         return protocol;
+    }
+
+    private async Task PropagateToReplicaAsync(string request, string protocol, PropagationStatus propagationStatus)
+    {
+        if (_redisInfo.Role == ServerRole.Master && protocol is RedisProtocol.SET)
+        {
+            var propCommand = Encoding.UTF8.GetBytes(request);
+
+            await SendCommandToReplicasAsync(propCommand, propagationStatus);
+        }
+    }
+
+    private async Task SendCommandToReplicasAsync(byte[] propCommand, PropagationStatus propagationStatus)
+    {
+        foreach (var replica in _connectedReplicas)
+        {
+            await replica.SendAsync(propCommand, SocketFlags.None);
+
+            propagationStatus.NumberOfReplicasAcknowledged++;
+        }
     }
 
     string GetRedisProtocol(string[] commands) => commands[2].ToLower();
