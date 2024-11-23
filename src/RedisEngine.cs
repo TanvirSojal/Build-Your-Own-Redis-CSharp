@@ -7,7 +7,7 @@ public class RedisEngine
     private readonly int _defaultDbIndex = 0;
     private readonly RdbHandler _rdbHandler;
     private readonly RedisInfo _redisInfo;
-    private readonly List<Socket> replicas = new List<Socket>();
+    private readonly List<Socket> _connectedReplicas = new List<Socket>();
 
     private bool _rdbReceivedFromMaster = false;
     private int _bytesSentByMasterSinceLastQuery = 0;
@@ -32,7 +32,7 @@ public class RedisEngine
         if (_redisInfo.Role == ServerRole.Master && protocol is RedisProtocol.SET)
         {
             var propCommand = Encoding.UTF8.GetBytes(request);
-            foreach (var replica in replicas)
+            foreach (var replica in _connectedReplicas)
             {
                 await replica.SendAsync(propCommand, SocketFlags.None);
             }
@@ -206,7 +206,9 @@ public class RedisEngine
 
         var timeout = commands[6];
 
-        await SendIntegerSocketResponseAsync(socket, 0);
+        var connectedReplicaCount = _connectedReplicas.Count;
+
+        await SendIntegerSocketResponseAsync(socket, connectedReplicaCount);
     }
 
     public async Task ConnectToMasterAsync()
@@ -431,7 +433,7 @@ public class RedisEngine
 
             case RedisProtocol.PSYNC:
                 await ProcessPsyncAsync(socket, commands);
-                replicas.Add(socket);
+                _connectedReplicas.Add(socket);
                 break;
 
             case RedisProtocol.WAIT:
