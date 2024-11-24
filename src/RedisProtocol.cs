@@ -14,4 +14,6 @@ public class RedisProtocol
     public const string WAIT = "wait";
     public const string TYPE = "type";
     public const string INCR = "incr";
+    public const string MULTI = "multi";
+    public const string EXEC = "exec";
 }

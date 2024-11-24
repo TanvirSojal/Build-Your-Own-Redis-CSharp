@@ -11,6 +11,8 @@ public class RedisEngine
 
     private bool _rdbReceivedFromMaster = false;
     private int _bytesSentByMasterSinceLastQuery = 0;
+    private List<RedisRequest> _redisRequestQueue = new List<RedisRequest>();
+    private bool _isQueueRequestReceived = false;
 
     public RedisEngine(RdbHandler rdbHandler, RedisInstance redisInstance)
     {
@@ -97,6 +99,14 @@ public class RedisEngine
                 await ProcessIncrementAsync(socket, commands);
                 break;
 
+            case RedisProtocol.MULTI:
+                await ProcessMultiAsync(socket, commands);
+                break;
+
+            case RedisProtocol.EXEC:
+                await ProcessExecAsync(socket, commands, stats);
+                break;
+
             case RedisProtocol.NONE:
                 break;
         }
@@ -113,8 +123,6 @@ public class RedisEngine
 
         return protocol;
     }
-
-
 
     private async Task ProcessPingAsync(Socket socket, string[] commands, bool fromMaster)
     {
@@ -329,7 +337,7 @@ public class RedisEngine
 
             if (int.TryParse(redisValue.Value, out var integerValue))
             {
-                
+
                 integerValue++;
 
                 redisValue.Value = integerValue.ToString();
@@ -350,6 +358,27 @@ public class RedisEngine
             db.Store.TryAdd(key, newRedisValue);
 
             await SendIntegerSocketResponseAsync(socket, 1);
+        }
+    }
+
+    private async Task ProcessMultiAsync(Socket socket, string[] commands)
+    {
+        _isQueueRequestReceived = true;
+        await SendOkSocketResponseAsync(socket);
+    }
+
+    private async Task ProcessExecAsync(Socket socket, string[] commands, ClientConnectionStats state)
+    {
+        if (!_isQueueRequestReceived)
+        {
+            await SendErrorStringSocketResponseAsync(socket, "EXEC without MULTI");
+        }
+        else
+        {
+            foreach (var request in _redisRequestQueue)
+            {
+                await ExecuteCommandAsync(socket, request, state);
+            }
         }
     }
 

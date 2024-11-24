@@ -60,6 +60,9 @@ async Task HandleIncomingRequestAsync(Socket socket)
     // this is accessible from different methods
     var stats = new ClientConnectionStats();
 
+    // new Redis Engine instantiated for every client connection
+    var engine = new RedisEngine(rdbHandler, redisInstance);
+
     while (true)
     {
         var readBuffer = new byte[1024];
