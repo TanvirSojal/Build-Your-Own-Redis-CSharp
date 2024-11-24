@@ -33,7 +33,91 @@ public class RedisEngine
         await PropagateToReplicaAsync(request, protocol, stats);
     }
 
-    public async Task ProcessPingAsync(Socket socket, string[] commands, bool fromMaster)
+    private async Task<string> ExecuteCommandAsync(Socket socket, RedisRequest request, ClientConnectionStats stats, bool fromMaster = false)
+    {
+        var commands = Regex.Split(request.CommandString, @"\s+");
+
+        var index = 0;
+
+        foreach (var command in commands)
+        {
+            Logger.Log($"{index++} {command}");
+        }
+
+        var protocol = GetRedisProtocol(commands);
+
+        Logger.Log($"Protocol: {protocol}");
+
+        switch (protocol)
+        {
+            case RedisProtocol.PING:
+                await ProcessPingAsync(socket, commands, fromMaster);
+                break;
+
+            case RedisProtocol.ECHO:
+                await ProcessEchoAsync(socket, commands);
+                break;
+
+            case RedisProtocol.SET:
+                await ProcessSetAsync(socket, commands, fromMaster);
+                break;
+
+            case RedisProtocol.GET:
+                await ProcessGetAsync(socket, commands);
+                break;
+
+            case RedisProtocol.CONFIG:
+                await ProcessConfigAsync(socket, commands);
+                break;
+
+            case RedisProtocol.KEYS:
+                await ProcessKeysAsync(socket, commands);
+                break;
+
+            case RedisProtocol.INFO:
+                await ProcessInfoAsync(socket, commands);
+                break;
+
+            case RedisProtocol.REPLCONF:
+                await ProcessReplConfAsync(socket, commands, fromMaster);
+                break;
+
+            case RedisProtocol.PSYNC:
+                await ProcessPsyncAsync(socket, commands);
+                break;
+
+            case RedisProtocol.WAIT:
+                await ProcessWaitAsync(socket, commands, stats);
+                break;
+
+            case RedisProtocol.TYPE:
+                await ProcessTypeAsync(socket, commands);
+                break;
+
+            case RedisProtocol.INCR:
+                await ProcessIncrementAsync(socket, commands);
+                break;
+
+            case RedisProtocol.NONE:
+                break;
+        }
+
+        if (fromMaster)
+        {
+            // add to cumulative sum of bytes received from master
+            Logger.Log($"Byte sum before {_bytesSentByMasterSinceLastQuery} + request length {request.ByteLength}");
+
+            _bytesSentByMasterSinceLastQuery += request.ByteLength;
+
+            Logger.Log($"Byte sum after {_bytesSentByMasterSinceLastQuery}");
+        }
+
+        return protocol;
+    }
+
+
+
+    private async Task ProcessPingAsync(Socket socket, string[] commands, bool fromMaster)
     {
         if (fromMaster)
         {
@@ -43,12 +127,12 @@ public class RedisEngine
         await SendBulkStringSocketResponseAsync(socket, "PONG");
     }
 
-    public async Task ProcessEchoAsync(Socket socket, string[] commands)
+    private async Task ProcessEchoAsync(Socket socket, string[] commands)
     {
         await SendBulkStringSocketResponseAsync(socket, commands[4]);
     }
 
-    public async Task ProcessSetAsync(Socket socket, string[] commands, bool fromMaster)
+    private async Task ProcessSetAsync(Socket socket, string[] commands, bool fromMaster)
     {
         var key = commands[4];
         var value = commands[6];
@@ -88,7 +172,7 @@ public class RedisEngine
         }
     }
 
-    public async Task ProcessGetAsync(Socket socket, string[] commands)
+    private async Task ProcessGetAsync(Socket socket, string[] commands)
     {
         var key = commands[4];
 
@@ -118,7 +202,7 @@ public class RedisEngine
         }
     }
 
-    public async Task ProcessConfigAsync(Socket socket, string[] commands)
+    private async Task ProcessConfigAsync(Socket socket, string[] commands)
     {
         var subcommand = commands[4];
 
@@ -128,7 +212,7 @@ public class RedisEngine
         }
     }
 
-    public async Task ProcessKeysAsync(Socket socket, string[] commands)
+    private async Task ProcessKeysAsync(Socket socket, string[] commands)
     {
         var argument = commands[4];
 
@@ -142,7 +226,7 @@ public class RedisEngine
         }
     }
 
-    public async Task ProcessInfoAsync(Socket socket, string[] commands)
+    private async Task ProcessInfoAsync(Socket socket, string[] commands)
     {
         var argument = commands[4];
 
@@ -154,7 +238,7 @@ public class RedisEngine
         }
     }
 
-    public async Task ProcessReplConfAsync(Socket socket, string[] commands, bool fromMaster)
+    private async Task ProcessReplConfAsync(Socket socket, string[] commands, bool fromMaster)
     {
         if (fromMaster)
         {
@@ -178,7 +262,7 @@ public class RedisEngine
 
     }
 
-    public async Task ProcessPsyncAsync(Socket socket, string[] commands)
+    private async Task ProcessPsyncAsync(Socket socket, string[] commands)
     {
         var response = $"FULLRESYNC 8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb 0"; // to be changed later
 
@@ -192,7 +276,7 @@ public class RedisEngine
         _connectedReplicas.Add(socket);
     }
 
-    public async Task ProcessWaitAsync(Socket socket, string[] commands, ClientConnectionStats stats)
+    private async Task ProcessWaitAsync(Socket socket, string[] commands, ClientConnectionStats stats)
     {
         if (commands.Length < 6)
         {
@@ -218,7 +302,7 @@ public class RedisEngine
         await SendIntegerSocketResponseAsync(socket, Math.Min(stats.NumberOfReplicasAcknowledged, numOfReplicas));
     }
 
-    public async Task ProcessTypeAsync(Socket socket, string[] commands)
+    private async Task ProcessTypeAsync(Socket socket, string[] commands)
     {
         var key = commands[4];
 
@@ -231,6 +315,42 @@ public class RedisEngine
         else
         {
             await SendSimpleStringSocketResponseAsync(socket, "none");
+        }
+    }
+
+    private async Task ProcessIncrementAsync(Socket socket, string[] commands)
+    {
+        var key = commands[4];
+
+        var db = GetDatabase();
+
+        if (db.Store.TryGetValue(key, out var redisValue))
+        {
+            Logger.Log($"Retrieved value: {redisValue.Value}");
+
+            if (int.TryParse(redisValue.Value, out var integerValue))
+            {
+                
+                integerValue++;
+
+                redisValue.Value = integerValue.ToString();
+
+                db.Store.TryAdd(key, redisValue);
+
+                await SendIntegerSocketResponseAsync(socket, integerValue);
+            }
+            else
+            {
+                await SendErrorStringSocketResponseAsync(socket, "value is not an integer or out of range");
+            }
+        }
+        else
+        {
+            var newRedisValue = new RedisValue("1", null);
+
+            db.Store.TryAdd(key, newRedisValue);
+
+            await SendIntegerSocketResponseAsync(socket, 1);
         }
     }
 
@@ -400,84 +520,6 @@ public class RedisEngine
         return db;
     }
 
-    private async Task<string> ExecuteCommandAsync(Socket socket, RedisRequest request, ClientConnectionStats stats, bool fromMaster = false)
-    {
-        var commands = Regex.Split(request.CommandString, @"\s+");
-
-        var index = 0;
-
-        foreach (var command in commands)
-        {
-            Logger.Log($"{index++} {command}");
-        }
-
-        var protocol = GetRedisProtocol(commands);
-
-        Logger.Log($"Protocol: {protocol}");
-
-        switch (protocol)
-        {
-            case RedisProtocol.PING:
-                await ProcessPingAsync(socket, commands, fromMaster);
-                break;
-
-            case RedisProtocol.ECHO:
-                await ProcessEchoAsync(socket, commands);
-                break;
-
-            case RedisProtocol.SET:
-                await ProcessSetAsync(socket, commands, fromMaster);
-                break;
-
-            case RedisProtocol.GET:
-                await ProcessGetAsync(socket, commands);
-                break;
-
-            case RedisProtocol.CONFIG:
-                await ProcessConfigAsync(socket, commands);
-                break;
-
-            case RedisProtocol.KEYS:
-                await ProcessKeysAsync(socket, commands);
-                break;
-
-            case RedisProtocol.INFO:
-                await ProcessInfoAsync(socket, commands);
-                break;
-
-            case RedisProtocol.REPLCONF:
-                await ProcessReplConfAsync(socket, commands, fromMaster);
-                break;
-
-            case RedisProtocol.PSYNC:
-                await ProcessPsyncAsync(socket, commands);
-                break;
-
-            case RedisProtocol.WAIT:
-                await ProcessWaitAsync(socket, commands, stats);
-                break;
-
-            case RedisProtocol.TYPE:
-                await ProcessTypeAsync(socket, commands);
-                break;
-
-            case RedisProtocol.NONE:
-                break;
-        }
-
-        if (fromMaster)
-        {
-            // add to cumulative sum of bytes received from master
-            Logger.Log($"Byte sum before {_bytesSentByMasterSinceLastQuery} + request length {request.ByteLength}");
-            
-            _bytesSentByMasterSinceLastQuery += request.ByteLength;
-
-            Logger.Log($"Byte sum after {_bytesSentByMasterSinceLastQuery}");
-        }
-
-        return protocol;
-    }
-
     private async Task PropagateToReplicaAsync(string request, string protocol, ClientConnectionStats stats)
     {
         if (_redisInfo.Role == ServerRole.Master && protocol is RedisProtocol.SET)
@@ -517,6 +559,7 @@ public class RedisEngine
     string GetRedisProtocol(string[] commands) => commands[2].ToLower();
     private string GetRespBulkString(string payload) => $"${payload.Length}\r\n{payload}\r\n";
     private string GetRespSimpleString(string payload) => $"+{payload}\r\n";
+    private string GetRespErrorString(string payload) => $"-ERR {payload}\r\n";
     private string GetNullBulkString() => "$-1\r\n";
     private string GetOkResponseString() => GetRespSimpleString("OK");
     private string GetRespInteger(long number) => $":{number}\r\n";
@@ -554,6 +597,12 @@ public class RedisEngine
     {
         var simpleString = GetRespSimpleString(message);
         await SendSocketResponseAsync(socket, simpleString);
+    }
+
+    private async Task SendErrorStringSocketResponseAsync(Socket socket, string message)
+    {
+        var errorString = GetRespErrorString(message);
+        await SendSocketResponseAsync(socket, errorString);
     }
 
     private async Task SendNullSocketResponseAsync(Socket socket)

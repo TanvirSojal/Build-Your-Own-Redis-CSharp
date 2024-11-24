@@ -13,4 +13,5 @@ public class RedisProtocol
     public const string PSYNC = "psync";
     public const string WAIT = "wait";
     public const string TYPE = "type";
+    public const string INCR = "incr";
 }
