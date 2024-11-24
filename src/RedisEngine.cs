@@ -13,28 +13,24 @@ public class RedisEngine
     private bool _rdbReceivedFromMaster = false;
     private int _bytesSentByMasterSinceLastQuery = 0;
 
-    private Dictionary<int, int> _replicaAckByThreadDictionary = new Dictionary<int, int>();
-
     public RedisEngine(RdbHandler rdbHandler, RedisInfo redisInfo)
     {
         _rdbHandler = rdbHandler;
         _redisInfo = redisInfo;
     }
 
-    public async Task ProcessRequestAsync(Socket socket, byte[] readBuffer)
+    public async Task ProcessRequestAsync(Socket socket, byte[] readBuffer, ClientConnectionStats stats)
     {
         var request = Encoding.UTF8.GetString(readBuffer).TrimEnd('\0');
 
         Logger.Log($"received: [{request}] Length: {request.Length}");
 
-        var propagationStatus = new PropagationStatus();
-
         // return the protocol of the command executed
         // it will be used to determine whether the command should be propagated
-        string protocol = await ExecuteCommandAsync(socket, new RedisRequest { CommandString = request }, propagationStatus);
+        string protocol = await ExecuteCommandAsync(socket, new RedisRequest { CommandString = request }, stats);
 
         // propagate the commands
-        await PropagateToReplicaAsync(request, protocol, propagationStatus);
+        await PropagateToReplicaAsync(request, protocol, stats);
     }
 
     public async Task ProcessPingAsync(Socket socket, string[] commands, bool fromMaster)
@@ -193,7 +189,7 @@ public class RedisEngine
         await SendRdbSocketResponseAsync(socket, currentRdb);
     }
 
-    public async Task ProcessWaitAsync(Socket socket, string[] commands, PropagationStatus propagationStatus)
+    public async Task ProcessWaitAsync(Socket socket, string[] commands, ClientConnectionStats stats)
     {
         if (commands.Length < 6)
         {
@@ -209,12 +205,12 @@ public class RedisEngine
         stopwatch.Start();
 
         // wait until timeout ms or specified replicas have acknowledged command
-        while (stopwatch.Elapsed.TotalMilliseconds < timeout && propagationStatus.NumberOfReplicasAcknowledged < numOfReplicas)
+        while (stopwatch.Elapsed.TotalMilliseconds < timeout && stats.NumberOfReplicasAcknowledged < numOfReplicas)
         {
-            //Logger.Log("waiting...");
+            //Logger.Log($"waiting... {stats.NumberOfReplicasAcknowledged}");
         }
 
-        await SendIntegerSocketResponseAsync(socket, propagationStatus.NumberOfReplicasAcknowledged);
+        await SendIntegerSocketResponseAsync(socket, stats.NumberOfReplicasAcknowledged);
     }
 
     public async Task ProcessTypeAsync(Socket socket, string[] commands)
@@ -245,18 +241,18 @@ public class RedisEngine
 
         await socket.ConnectAsync(_redisInfo.MasterEndpoint);
 
-        await SendCommandsToMasterAsync(socket, ["PING"]);
+        await SendCommandsAsync(socket, ["PING"]);
 
-        await SendCommandsToMasterAsync(socket, ["REPLCONF", "listening-port", _redisInfo.Port.ToString()]);
+        await SendCommandsAsync(socket, ["REPLCONF", "listening-port", _redisInfo.Port.ToString()]);
 
-        await SendCommandsToMasterAsync(socket, ["REPLCONF", "capa", "psync2"]);
+        await SendCommandsAsync(socket, ["REPLCONF", "capa", "psync2"]);
 
-        await SendCommandsToMasterAsync(socket, ["PSYNC", "?", "-1"], receiveImmediateResponse: false);
+        await SendCommandsAsync(socket, ["PSYNC", "?", "-1"], receiveImmediateResponse: false);
 
         await Task.Run(async () => await ReceiveCommandsFromMasterAsync(socket));
     }
 
-    private async Task SendCommandsToMasterAsync(Socket socket, string[] commands, bool receiveImmediateResponse = true)
+    private async Task SendCommandsAsync(Socket socket, string[] commands, bool receiveImmediateResponse = true)
     {
         await SendArraySocketResponseAsync(socket, commands);
 
@@ -302,7 +298,7 @@ public class RedisEngine
 
             foreach (var command in commands)
             {
-                await ExecuteCommandAsync(socket, command, new PropagationStatus(), fromMaster: true);
+                await ExecuteCommandAsync(socket, command, new ClientConnectionStats(), fromMaster: true);
             }
         }
     }
@@ -404,7 +400,7 @@ public class RedisEngine
         return db;
     }
 
-    private async Task<string> ExecuteCommandAsync(Socket socket, RedisRequest request, PropagationStatus propagationStatus, bool fromMaster = false)
+    private async Task<string> ExecuteCommandAsync(Socket socket, RedisRequest request, ClientConnectionStats stats, bool fromMaster = false)
     {
         var commands = Regex.Split(request.CommandString, @"\s+");
 
@@ -459,7 +455,7 @@ public class RedisEngine
                 break;
 
             case RedisProtocol.WAIT:
-                await ProcessWaitAsync(socket, commands, propagationStatus);
+                await ProcessWaitAsync(socket, commands, stats);
                 break;
 
             case RedisProtocol.TYPE:
@@ -482,23 +478,29 @@ public class RedisEngine
         return protocol;
     }
 
-    private async Task PropagateToReplicaAsync(string request, string protocol, PropagationStatus propagationStatus)
+    private async Task PropagateToReplicaAsync(string request, string protocol, ClientConnectionStats stats)
     {
         if (_redisInfo.Role == ServerRole.Master && protocol is RedisProtocol.SET)
         {
             var propCommand = Encoding.UTF8.GetBytes(request);
 
-            await SendCommandToReplicasAsync(propCommand, propagationStatus);
+            await SendCommandToReplicasAsync(propCommand, stats);
         }
     }
 
-    private async Task SendCommandToReplicasAsync(byte[] propCommand, PropagationStatus propagationStatus)
+    private async Task SendCommandToReplicasAsync(byte[] propCommand, ClientConnectionStats stats)
     {
+        Logger.Log($"Sending to {_connectedReplicas.Count} replica(s).");
+
+        stats.NumberOfReplicasAcknowledged = 0;
+
         foreach (var replica in _connectedReplicas)
         {
             await replica.SendAsync(propCommand, SocketFlags.None);
 
-            propagationStatus.NumberOfReplicasAcknowledged++;
+            await SendCommandsAsync(replica, ["REPLCONF", "GETACK", "*"]);
+
+            stats.NumberOfReplicasAcknowledged++;
         }
     }
 

@@ -56,12 +56,16 @@ while (true)
 // *2\r\n$4\r\nECHO\r\n$3\r\nhey\r\n
 async Task HandleIncomingRequestAsync(Socket socket)
 {
+    // a common store of data for the current client connection
+    // this is accessible from different methods
+    var stats = new ClientConnectionStats();
+
     while (true)
     {
         var readBuffer = new byte[1024];
 
         await socket.ReceiveAsync(readBuffer);
 
-        await engine.ProcessRequestAsync(socket, readBuffer);
+        await engine.ProcessRequestAsync(socket, readBuffer, stats);
     }
 }
