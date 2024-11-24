@@ -7,16 +7,15 @@ public class RedisEngine
 {
     private readonly int _defaultDbIndex = 0;
     private readonly RdbHandler _rdbHandler;
-    private readonly RedisInfo _redisInfo;
-    private readonly List<Socket> _connectedReplicas = new List<Socket>();
+    private readonly RedisInstance _redisInstance;
 
     private bool _rdbReceivedFromMaster = false;
     private int _bytesSentByMasterSinceLastQuery = 0;
 
-    public RedisEngine(RdbHandler rdbHandler, RedisInfo redisInfo)
+    public RedisEngine(RdbHandler rdbHandler, RedisInstance redisInstance)
     {
         _rdbHandler = rdbHandler;
-        _redisInfo = redisInfo;
+        _redisInstance = redisInstance;
     }
 
     public async Task ProcessRequestAsync(Socket socket, byte[] readBuffer, ClientConnectionStats stats)
@@ -234,7 +233,7 @@ public class RedisEngine
 
         if (argument.Equals("replication", StringComparison.OrdinalIgnoreCase))
         {
-            await SendBulkStringSocketResponseAsync(socket, _redisInfo.ToString());
+            await SendBulkStringSocketResponseAsync(socket, _redisInstance.ToString());
         }
     }
 
@@ -273,7 +272,7 @@ public class RedisEngine
         await SendRdbSocketResponseAsync(socket, currentRdb);
 
         // add the socket in the replica list
-        _connectedReplicas.Add(socket);
+        _redisInstance.ConnectedReplicas.Add(socket);
     }
 
     private async Task ProcessWaitAsync(Socket socket, string[] commands, ClientConnectionStats stats)
@@ -356,19 +355,19 @@ public class RedisEngine
 
     public async Task ConnectToMasterAsync()
     {
-        if (_redisInfo.MasterEndpoint == null)
+        if (_redisInstance.MasterEndpoint == null)
         {
             Logger.Log("No master specified.");
             return;
         }
 
-        using var socket = new Socket(_redisInfo.MasterEndpoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+        using var socket = new Socket(_redisInstance.MasterEndpoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
 
-        await socket.ConnectAsync(_redisInfo.MasterEndpoint);
+        await socket.ConnectAsync(_redisInstance.MasterEndpoint);
 
         await SendCommandsAsync(socket, ["PING"]);
 
-        await SendCommandsAsync(socket, ["REPLCONF", "listening-port", _redisInfo.Port.ToString()]);
+        await SendCommandsAsync(socket, ["REPLCONF", "listening-port", _redisInstance.Port.ToString()]);
 
         await SendCommandsAsync(socket, ["REPLCONF", "capa", "psync2"]);
 
@@ -522,7 +521,7 @@ public class RedisEngine
 
     private async Task PropagateToReplicaAsync(string request, string protocol, ClientConnectionStats stats)
     {
-        if (_redisInfo.Role == ServerRole.Master && protocol is RedisProtocol.SET)
+        if (_redisInstance.Role == ServerRole.Master && protocol is RedisProtocol.SET)
         {
             Logger.Log($"Propagating: [{request}]");
 
@@ -534,11 +533,11 @@ public class RedisEngine
 
     private async Task SendCommandToReplicasAsync(byte[] propCommand, ClientConnectionStats stats)
     {
-        Logger.Log($"Sending to {_connectedReplicas.Count} replica(s).");
+        Logger.Log($"Sending to {_redisInstance.ConnectedReplicas.Count} replica(s).");
 
         stats.NumberOfReplicasAcknowledged = 0;
 
-        foreach (var replica in _connectedReplicas)
+        foreach (var replica in _redisInstance.ConnectedReplicas)
         {
             Logger.Log($"Sending command to replica {replica.RemoteEndPoint}");
 

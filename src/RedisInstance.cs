@@ -1,9 +1,11 @@
 using System.Net;
+using System.Net.Sockets;
 
-public class RedisInfo
+public class RedisInstance
 {
     public ServerRole Role { get; set; } = ServerRole.Master;
     public IPEndPoint? MasterEndpoint { get; set; }
+    public readonly List<Socket> ConnectedReplicas = new List<Socket>();
     public int Port { get; set; }
 
     public void SetMasterEndpoint(string address){

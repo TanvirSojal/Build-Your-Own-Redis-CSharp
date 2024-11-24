@@ -1,8 +1,8 @@
 using System.Net;
 using System.Net.Sockets;
 
-var redisInfo = new RedisInfo();
-redisInfo.Port = 6379;
+var redisInstance = new RedisInstance();
+redisInstance.Port = 6379;
 
 var rdbConfig = new RdbConfiguration();
 // Read CLI arguments
@@ -18,26 +18,26 @@ for (var index = 0; index < args.Length; index++)
     }
     if (args[index].Equals("--port", StringComparison.OrdinalIgnoreCase))
     {
-        redisInfo.Port = int.Parse(args[index + 1]);
+        redisInstance.Port = int.Parse(args[index + 1]);
     }
     if (args[index].Equals("--replicaof", StringComparison.OrdinalIgnoreCase))
     {
-        redisInfo.Role = ServerRole.Slave;
-        redisInfo.SetMasterEndpoint(args[index + 1]);
+        redisInstance.Role = ServerRole.Slave;
+        redisInstance.SetMasterEndpoint(args[index + 1]);
     }
 }
 
 var rdbHandler = new RdbHandler(rdbConfig);
 rdbHandler.RestoreSnapshot();
 
-var engine = new RedisEngine(rdbHandler, redisInfo);
+var engine = new RedisEngine(rdbHandler, redisInstance);
 
-TcpListener server = new TcpListener(IPAddress.Any, redisInfo.Port);
+TcpListener server = new TcpListener(IPAddress.Any, redisInstance.Port);
 server.Start();
 
-Console.WriteLine($"Server started on port {redisInfo.Port}");
+Console.WriteLine($"Server started on port {redisInstance.Port}");
 
-if (redisInfo.Role == ServerRole.Slave)
+if (redisInstance.Role == ServerRole.Slave)
 {
     // handshake to master and receive propagated commands in a separate thread
     _ = Task.Run(engine.ConnectToMasterAsync);
