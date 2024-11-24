@@ -23,7 +23,7 @@ public class RedisEngine
     {
         var request = Encoding.UTF8.GetString(readBuffer).TrimEnd('\0');
 
-        Logger.Log($"received: [{request}] Length: {request.Length}");
+        Logger.Log($"Received (from client): [{request}] Length: {request.Length}");
 
         // return the protocol of the command executed
         // it will be used to determine whether the command should be propagated
@@ -187,6 +187,9 @@ public class RedisEngine
         var currentRdb = _rdbHandler.GetCurrentStateAsRdb();
 
         await SendRdbSocketResponseAsync(socket, currentRdb);
+
+        // add the socket in the replica list
+        _connectedReplicas.Add(socket);
     }
 
     public async Task ProcessWaitAsync(Socket socket, string[] commands, ClientConnectionStats stats)
@@ -209,6 +212,8 @@ public class RedisEngine
         {
             //Logger.Log($"waiting... {stats.NumberOfReplicasAcknowledged}");
         }
+
+        Logger.Log($"Send WAIT response: {stats.NumberOfReplicasAcknowledged}");
 
         await SendIntegerSocketResponseAsync(socket, stats.NumberOfReplicasAcknowledged);
     }
@@ -263,7 +268,7 @@ public class RedisEngine
 
             await socket.ReceiveAsync(buffer);
 
-            Logger.Log($"Received: {Encoding.UTF8.GetString(buffer)}");
+            Logger.Log($"Received (response): {Encoding.UTF8.GetString(buffer)}");
         }
     }
 
@@ -280,7 +285,7 @@ public class RedisEngine
                 break;
             }
 
-            Logger.Log($"Received from Master: {Encoding.UTF8.GetString(readBuffer)}");
+            Logger.Log($"Received (from master): {Encoding.UTF8.GetString(readBuffer)}");
 
             var commandProcessingStartIndex = 0;
 
@@ -340,9 +345,6 @@ public class RedisEngine
                     {
                         var command = Encoding.UTF8.GetString([.. commandBytes]);
                         commands.Add(new RedisRequest { CommandString = command, ByteLength = commandBytes.Count });
-
-                        Logger.Log($"Redis request length is (inner) {commandBytes.Count}");
-
                         commandBytes.Clear();
                     }
                 }
@@ -353,13 +355,11 @@ public class RedisEngine
 
         if (commandBytes.Count > 0)
         {
-            foreach (var b in commandBytes)
-            {
-                Console.Write($"{b:x2} ");
-            }
-            Console.WriteLine("");
-
-            Logger.Log($"Redis request length is (outer) {commandBytes.Count}");
+            // foreach (var b in commandBytes)
+            // {
+            //     Console.Write($"{b:x2} ");
+            // }
+            // Console.WriteLine("");
 
             var command = Encoding.UTF8.GetString([.. commandBytes]);
             commands.Add(new RedisRequest { CommandString = command, ByteLength = commandBytes.Count });
@@ -451,7 +451,6 @@ public class RedisEngine
 
             case RedisProtocol.PSYNC:
                 await ProcessPsyncAsync(socket, commands);
-                _connectedReplicas.Add(socket);
                 break;
 
             case RedisProtocol.WAIT:
@@ -470,6 +469,7 @@ public class RedisEngine
         {
             // add to cumulative sum of bytes received from master
             Logger.Log($"Byte sum before {_bytesSentByMasterSinceLastQuery} + request length {request.ByteLength}");
+            
             _bytesSentByMasterSinceLastQuery += request.ByteLength;
 
             Logger.Log($"Byte sum after {_bytesSentByMasterSinceLastQuery}");
@@ -496,9 +496,17 @@ public class RedisEngine
 
         foreach (var replica in _connectedReplicas)
         {
+            Logger.Log($"Sending command to replica {replica.RemoteEndPoint}");
+
             await replica.SendAsync(propCommand, SocketFlags.None);
 
-            await SendCommandsAsync(replica, ["REPLCONF", "GETACK", "*"]);
+            Logger.Log($"Sent command to replica {replica.RemoteEndPoint}");
+
+            Logger.Log($"Sending GETACK * to replica {replica.RemoteEndPoint}");
+
+            await SendCommandsAsync(replica, ["REPLCONF", "GETACK", "*"], receiveImmediateResponse: false);
+
+            Logger.Log($"Sent GETACT * to replica {replica.RemoteEndPoint}");
 
             stats.NumberOfReplicasAcknowledged++;
         }

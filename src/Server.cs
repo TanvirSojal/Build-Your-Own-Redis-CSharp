@@ -64,7 +64,12 @@ async Task HandleIncomingRequestAsync(Socket socket)
     {
         var readBuffer = new byte[1024];
 
-        await socket.ReceiveAsync(readBuffer);
+        var bytesRead = await socket.ReceiveAsync(readBuffer);
+
+        if (bytesRead == 0)
+        {
+            break;
+        }
 
         await engine.ProcessRequestAsync(socket, readBuffer, stats);
     }
