@@ -375,9 +375,16 @@ public class RedisEngine
         }
         else
         {
-            foreach (var request in _redisRequestQueue)
+            if (_redisRequestQueue.Count == 0)
             {
-                await ExecuteCommandAsync(socket, request, state);
+                await SendArraySocketResponseAsync(socket, []);
+            }
+            else
+            {
+                foreach (var request in _redisRequestQueue)
+                {
+                    await ExecuteCommandAsync(socket, request, state);
+                }
             }
         }
     }
