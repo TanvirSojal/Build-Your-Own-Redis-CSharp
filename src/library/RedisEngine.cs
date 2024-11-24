@@ -49,6 +49,13 @@ public class RedisEngine
 
         Logger.Log($"Protocol: {protocol}");
 
+        if (_shouldQueueRequeusts && protocol is not RedisProtocol.EXEC)
+        {
+            _redisRequestQueue.Add(request);
+            await SendSimpleStringSocketResponseAsync(socket, "QUEUED");
+            return RedisProtocol.NONE;
+        }
+
         switch (protocol)
         {
             case RedisProtocol.PING:
