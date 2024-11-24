@@ -193,7 +193,7 @@ public class RedisEngine
         await SendRdbSocketResponseAsync(socket, currentRdb);
     }
 
-    private async Task ProcessWaitAsync(Socket socket, string[] commands, PropagationStatus propagationStatus)
+    public async Task ProcessWaitAsync(Socket socket, string[] commands, PropagationStatus propagationStatus)
     {
         if (commands.Length < 6)
         {
@@ -215,6 +215,22 @@ public class RedisEngine
         }
 
         await SendIntegerSocketResponseAsync(socket, propagationStatus.NumberOfReplicasAcknowledged);
+    }
+
+    public async Task ProcessTypeAsync(Socket socket, string[] commands)
+    {
+        var key = commands[4];
+
+        var db = GetDatabase();
+
+        if (db.Store.ContainsKey(key))
+        {
+            await SendSimpleStringSocketResponseAsync(socket, "string");
+        }
+        else
+        {
+            await SendSimpleStringSocketResponseAsync(socket, "none");
+        }
     }
 
     public async Task ConnectToMasterAsync()
@@ -446,6 +462,10 @@ public class RedisEngine
                 await ProcessWaitAsync(socket, commands, propagationStatus);
                 break;
 
+            case RedisProtocol.TYPE:
+                await ProcessTypeAsync(socket, commands);
+                break;
+
             case RedisProtocol.NONE:
                 break;
         }
@@ -483,17 +503,18 @@ public class RedisEngine
     }
 
     string GetRedisProtocol(string[] commands) => commands[2].ToLower();
-    private string GetRedisBulkString(string payload) => $"${payload.Length}\r\n{payload}\r\n";
+    private string GetRespBulkString(string payload) => $"${payload.Length}\r\n{payload}\r\n";
+    private string GetRespSimpleString(string payload) => $"+{payload}\r\n";
     private string GetNullBulkString() => "$-1\r\n";
-    private string GetOkResponseString() => "+OK\r\n";
+    private string GetOkResponseString() => GetRespSimpleString("OK");
     private string GetRespInteger(long number) => $":{number}\r\n";
-    private string GetRedisBulkArray(string[] payload)
+    private string GetRespBulkArray(string[] payload)
     {
         var response = $"*{payload.Length}\r\n";
 
         foreach (var item in payload)
         {
-            response += GetRedisBulkString(item);
+            response += GetRespBulkString(item);
         }
 
         return response;
@@ -501,13 +522,13 @@ public class RedisEngine
 
     private async Task SendBulkStringSocketResponseAsync(Socket socket, string message)
     {
-        var bulkString = GetRedisBulkString(message);
+        var bulkString = GetRespBulkString(message);
         await SendSocketResponseAsync(socket, bulkString);
     }
 
     private async Task SendArraySocketResponseAsync(Socket socket, string[] message)
     {
-        var bulkArray = GetRedisBulkArray(message);
+        var bulkArray = GetRespBulkArray(message);
         await SendSocketResponseAsync(socket, bulkArray);
     }
 
@@ -515,6 +536,12 @@ public class RedisEngine
     {
         var integer = GetRespInteger(number);
         await SendSocketResponseAsync(socket, integer);
+    }
+
+    private async Task SendSimpleStringSocketResponseAsync(Socket socket, string message)
+    {
+        var simpleString = GetRespSimpleString(message);
+        await SendSocketResponseAsync(socket, simpleString);
     }
 
     private async Task SendNullSocketResponseAsync(Socket socket)
