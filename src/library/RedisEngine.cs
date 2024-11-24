@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 public class RedisEngine
@@ -12,7 +13,8 @@ public class RedisEngine
     private bool _rdbReceivedFromMaster = false;
     private int _bytesSentByMasterSinceLastQuery = 0;
     private List<RedisRequest> _redisRequestQueue = new List<RedisRequest>();
-    private bool _shouldQueueRequeusts = false;
+    private List<RedisResponse> _redisResponseQueue = new List<RedisResponse>();
+    private bool _shouldQueueResponses = false;
 
     public RedisEngine(RdbHandler rdbHandler, RedisInstance redisInstance)
     {
@@ -20,7 +22,7 @@ public class RedisEngine
         _redisInstance = redisInstance;
     }
 
-    public async Task ProcessRequestAsync(Socket socket, byte[] readBuffer, ClientConnectionStats stats)
+    public async Task ProcessRequestAsync(Socket socket, byte[] readBuffer, ClientConnectionState state)
     {
         var request = Encoding.UTF8.GetString(readBuffer).TrimEnd('\0');
 
@@ -28,13 +30,13 @@ public class RedisEngine
 
         // return the protocol of the command executed
         // it will be used to determine whether the command should be propagated
-        string protocol = await ExecuteCommandAsync(socket, new RedisRequest { CommandString = request }, stats);
+        string protocol = await ExecuteCommandAsync(socket, new RedisRequest { CommandString = request }, state);
 
         // propagate the commands
-        await PropagateToReplicaAsync(request, protocol, stats);
+        await PropagateToReplicaAsync(request, protocol, state);
     }
 
-    private async Task<string> ExecuteCommandAsync(Socket socket, RedisRequest request, ClientConnectionStats stats, bool fromMaster = false)
+    private async Task<string> ExecuteCommandAsync(Socket socket, RedisRequest request, ClientConnectionState state, bool fromMaster = false)
     {
         var commands = Regex.Split(request.CommandString, @"\s+");
 
@@ -49,7 +51,9 @@ public class RedisEngine
 
         Logger.Log($"Protocol: {protocol}");
 
-        if (_shouldQueueRequeusts && protocol is not RedisProtocol.EXEC)
+        Logger.Log($"Should queue request? {state.ShouldQueueRequests}");
+
+        if (state.ShouldQueueRequests && protocol is not RedisProtocol.EXEC)
         {
             _redisRequestQueue.Add(request);
             await SendSimpleStringSocketResponseAsync(socket, "QUEUED");
@@ -95,7 +99,7 @@ public class RedisEngine
                 break;
 
             case RedisProtocol.WAIT:
-                await ProcessWaitAsync(socket, commands, stats);
+                await ProcessWaitAsync(socket, commands, state);
                 break;
 
             case RedisProtocol.TYPE:
@@ -107,11 +111,15 @@ public class RedisEngine
                 break;
 
             case RedisProtocol.MULTI:
-                await ProcessMultiAsync(socket, commands);
+                await ProcessMultiAsync(socket, commands, state);
                 break;
 
             case RedisProtocol.EXEC:
-                await ProcessExecAsync(socket, commands, stats);
+                await ProcessExecAsync(socket, commands, state);
+                break;
+
+            case RedisProtocol.DISCARD:
+                await ProcessDiscardAsync(socket, commands, state);
                 break;
 
             case RedisProtocol.NONE:
@@ -290,7 +298,7 @@ public class RedisEngine
         _redisInstance.ConnectedReplicas.Add(socket);
     }
 
-    private async Task ProcessWaitAsync(Socket socket, string[] commands, ClientConnectionStats stats)
+    private async Task ProcessWaitAsync(Socket socket, string[] commands, ClientConnectionState state)
     {
         if (commands.Length < 6)
         {
@@ -306,14 +314,14 @@ public class RedisEngine
         stopwatch.Start();
 
         // wait until timeout ms or specified replicas have acknowledged command
-        while (stopwatch.Elapsed.TotalMilliseconds < timeout && stats.NumberOfReplicasAcknowledged < numOfReplicas)
+        while (stopwatch.Elapsed.TotalMilliseconds < timeout && state.NumberOfReplicasAcknowledged < numOfReplicas)
         {
-            //Logger.Log($"waiting... {stats.NumberOfReplicasAcknowledged}");
+            //Logger.Log($"waiting... {state.NumberOfReplicasAcknowledged}");
         }
 
-        Logger.Log($"Send WAIT response: {stats.NumberOfReplicasAcknowledged}");
+        Logger.Log($"Send WAIT response: {state.NumberOfReplicasAcknowledged}");
 
-        await SendIntegerSocketResponseAsync(socket, Math.Min(stats.NumberOfReplicasAcknowledged, numOfReplicas));
+        await SendIntegerSocketResponseAsync(socket, Math.Min(state.NumberOfReplicasAcknowledged, numOfReplicas));
     }
 
     private async Task ProcessTypeAsync(Socket socket, string[] commands)
@@ -368,32 +376,74 @@ public class RedisEngine
         }
     }
 
-    private async Task ProcessMultiAsync(Socket socket, string[] commands)
+    private async Task ProcessMultiAsync(Socket socket, string[] commands, ClientConnectionState state)
     {
-        _shouldQueueRequeusts = true;
         await SendOkSocketResponseAsync(socket);
+        state.ShouldQueueRequests = true;
     }
 
-    private async Task ProcessExecAsync(Socket socket, string[] commands, ClientConnectionStats state)
+    private async Task ProcessExecAsync(Socket socket, string[] commands, ClientConnectionState state)
     {
-        if (!_shouldQueueRequeusts)
+        if (!state.ShouldQueueRequests)
         {
             await SendErrorStringSocketResponseAsync(socket, "EXEC without MULTI");
         }
         else
         {
+            state.ShouldQueueRequests = false; // remove "MULTI" flag so the requeusts can update redis state now
+            Logger.Log($"Should queue requests? {state.ShouldQueueRequests}");
             if (_redisRequestQueue.Count == 0)
             {
                 await SendArraySocketResponseAsync(socket, []);
             }
             else
             {
+                _shouldQueueResponses = true; // queue all response
+
                 foreach (var request in _redisRequestQueue)
                 {
+                    Logger.Log($"EXEC > [${request.CommandString}]");
                     await ExecuteCommandAsync(socket, request, state);
                 }
+
+                _shouldQueueResponses = false; // unset queue-response flag, because now we will send the EXEC response array
+
+                var array = $"*{_redisResponseQueue.Count}\r\n";
+
+                foreach (var item in _redisResponseQueue)
+                {
+                    if (item.DataType == DataType.INTEGER && item.IntegerValue.HasValue)
+                    {
+                        array += GetRespInteger(item.IntegerValue.Value);
+                    }
+                    else if (item.DataType == DataType.STRING && item.StringValue != null)
+                    {
+                        array += GetRespBulkString(item.StringValue);
+                    }
+                }
+
+                // array of mixed elements (string, int. etc.)
+                Logger.Log($"EXEC response: {array}");
+
+                await SendSocketResponseAsync(socket, array);
             }
-            _shouldQueueRequeusts = false;
+
+            // reset
+            _redisResponseQueue.Clear();
+        }
+    }
+
+    private async Task ProcessDiscardAsync(Socket socket, string[] commands, ClientConnectionState state)
+    {
+        if (!state.ShouldQueueRequests)
+        {
+            await SendErrorStringSocketResponseAsync(socket, "EXEC without MULTI");
+        }
+        else
+        {
+            state.ShouldQueueRequests = false;
+            _redisRequestQueue.Clear();
+            await SendOkSocketResponseAsync(socket);
         }
     }
 
@@ -466,7 +516,7 @@ public class RedisEngine
 
             foreach (var command in commands)
             {
-                await ExecuteCommandAsync(socket, command, new ClientConnectionStats(), fromMaster: true);
+                await ExecuteCommandAsync(socket, command, new ClientConnectionState(), fromMaster: true);
             }
         }
     }
@@ -563,7 +613,7 @@ public class RedisEngine
         return db;
     }
 
-    private async Task PropagateToReplicaAsync(string request, string protocol, ClientConnectionStats stats)
+    private async Task PropagateToReplicaAsync(string request, string protocol, ClientConnectionState state)
     {
         if (_redisInstance.Role == ServerRole.Master && protocol is RedisProtocol.SET)
         {
@@ -571,15 +621,15 @@ public class RedisEngine
 
             var propCommand = Encoding.UTF8.GetBytes(request);
 
-            await SendCommandToReplicasAsync(propCommand, stats);
+            await SendCommandToReplicasAsync(propCommand, state);
         }
     }
 
-    private async Task SendCommandToReplicasAsync(byte[] propCommand, ClientConnectionStats stats)
+    private async Task SendCommandToReplicasAsync(byte[] propCommand, ClientConnectionState state)
     {
         Logger.Log($"Sending to {_redisInstance.ConnectedReplicas.Count} replica(s).");
 
-        stats.NumberOfReplicasAcknowledged = 0;
+        state.NumberOfReplicasAcknowledged = 0;
 
         foreach (var replica in _redisInstance.ConnectedReplicas)
         {
@@ -595,7 +645,7 @@ public class RedisEngine
 
             Logger.Log($"Sent GETACT * to replica {replica.RemoteEndPoint}");
 
-            stats.NumberOfReplicasAcknowledged++;
+            state.NumberOfReplicasAcknowledged++;
         }
     }
 
@@ -620,41 +670,83 @@ public class RedisEngine
 
     private async Task SendBulkStringSocketResponseAsync(Socket socket, string message)
     {
+        if (_shouldQueueResponses)
+        {
+            AddToResponseQueue(message);
+            return;
+        }
+
         var bulkString = GetRespBulkString(message);
         await SendSocketResponseAsync(socket, bulkString);
     }
 
     private async Task SendArraySocketResponseAsync(Socket socket, string[] message)
     {
+        // if (_shouldQueueResponses)
+        // {
+        //     AddToResponseQueue(message);
+        //     return;
+        // }
+
         var bulkArray = GetRespBulkArray(message);
         await SendSocketResponseAsync(socket, bulkArray);
     }
 
     private async Task SendIntegerSocketResponseAsync(Socket socket, long number)
     {
+        if (_shouldQueueResponses)
+        {
+            AddToResponseQueue(number);
+            return;
+        }
+
         var integer = GetRespInteger(number);
         await SendSocketResponseAsync(socket, integer);
     }
 
     private async Task SendSimpleStringSocketResponseAsync(Socket socket, string message)
     {
+        if (_shouldQueueResponses)
+        {
+            AddToResponseQueue(message);
+            return;
+        }
+
         var simpleString = GetRespSimpleString(message);
         await SendSocketResponseAsync(socket, simpleString);
     }
 
     private async Task SendErrorStringSocketResponseAsync(Socket socket, string message)
     {
+        if (_shouldQueueResponses)
+        {
+            AddToResponseQueue(message);
+            return;
+        }
+
         var errorString = GetRespErrorString(message);
         await SendSocketResponseAsync(socket, errorString);
     }
 
     private async Task SendNullSocketResponseAsync(Socket socket)
     {
+        if (_shouldQueueResponses)
+        {
+            AddToResponseQueue("-1");
+            return;
+        }
+
         await SendSocketResponseAsync(socket, GetNullBulkString());
     }
 
     private async Task SendOkSocketResponseAsync(Socket socket)
     {
+        if (_shouldQueueResponses)
+        {
+            AddToResponseQueue("OK");
+            return;
+        }
+
         await SendSocketResponseAsync(socket, GetOkResponseString());
     }
 
@@ -667,9 +759,27 @@ public class RedisEngine
         await socket.SendAsync(data, SocketFlags.None);
     }
 
-    private static async Task SendSocketResponseAsync(Socket socket, string payload)
+    private async Task SendSocketResponseAsync(Socket socket, string payload)
     {
         var response = Encoding.UTF8.GetBytes(payload);
         await socket.SendAsync(response, SocketFlags.None);
+    }
+
+    private void AddToResponseQueue(string payload)
+    {
+        _redisResponseQueue.Add(new RedisResponse
+        {
+            DataType = DataType.STRING,
+            StringValue = payload
+        });
+    }
+
+    private void AddToResponseQueue(long payload)
+    {
+        _redisResponseQueue.Add(new RedisResponse
+        {
+            DataType = DataType.INTEGER,
+            IntegerValue = payload
+        });
     }
 }

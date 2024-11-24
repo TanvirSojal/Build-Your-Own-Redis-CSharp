@@ -16,4 +16,5 @@ public class RedisProtocol
     public const string INCR = "incr";
     public const string MULTI = "multi";
     public const string EXEC = "exec";
+    public const string DISCARD = "discard";
 }

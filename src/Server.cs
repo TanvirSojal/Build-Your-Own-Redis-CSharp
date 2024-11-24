@@ -58,7 +58,7 @@ async Task HandleIncomingRequestAsync(Socket socket)
 {
     // a common store of data for the current client connection
     // this is accessible from different methods
-    var stats = new ClientConnectionStats();
+    var stats = new ClientConnectionState();
 
     // new Redis Engine instantiated for every client connection
     var engine = new RedisEngine(rdbHandler, redisInstance);
