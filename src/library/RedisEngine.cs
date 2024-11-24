@@ -53,11 +53,25 @@ public class RedisEngine
 
         Logger.Log($"Should queue request? {state.ShouldQueueRequests}");
 
-        if (state.ShouldQueueRequests && protocol is not RedisProtocol.EXEC)
+        // handle Transactions (MULTI, EXEC, DISCARD)
+        if (state.ShouldQueueRequests)
         {
-            _redisRequestQueue.Add(request);
-            await SendSimpleStringSocketResponseAsync(socket, "QUEUED");
-            return RedisProtocol.NONE;
+            if (protocol is RedisProtocol.DISCARD)
+            {  
+                await ProcessDiscardAsync(socket, commands, state);
+                return protocol;
+            }
+            else if (protocol is RedisProtocol.EXEC)
+            {
+                await ProcessExecAsync(socket, commands, state);
+                return protocol;
+            }
+            else
+            {
+                _redisRequestQueue.Add(request);
+                await SendSimpleStringSocketResponseAsync(socket, "QUEUED");
+                return RedisProtocol.NONE;
+            }
         }
 
         switch (protocol)
@@ -437,7 +451,7 @@ public class RedisEngine
     {
         if (!state.ShouldQueueRequests)
         {
-            await SendErrorStringSocketResponseAsync(socket, "EXEC without MULTI");
+            await SendErrorStringSocketResponseAsync(socket, "DISCARD without MULTI");
         }
         else
         {
