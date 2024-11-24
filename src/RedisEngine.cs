@@ -215,7 +215,7 @@ public class RedisEngine
 
         Logger.Log($"Send WAIT response: {stats.NumberOfReplicasAcknowledged}");
 
-        await SendIntegerSocketResponseAsync(socket, stats.NumberOfReplicasAcknowledged);
+        await SendIntegerSocketResponseAsync(socket, Math.Min(stats.NumberOfReplicasAcknowledged, numOfReplicas));
     }
 
     public async Task ProcessTypeAsync(Socket socket, string[] commands)
@@ -482,6 +482,8 @@ public class RedisEngine
     {
         if (_redisInfo.Role == ServerRole.Master && protocol is RedisProtocol.SET)
         {
+            Logger.Log($"Propagating: [{request}]");
+
             var propCommand = Encoding.UTF8.GetBytes(request);
 
             await SendCommandToReplicasAsync(propCommand, stats);
