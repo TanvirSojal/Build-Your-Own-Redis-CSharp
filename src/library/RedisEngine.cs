@@ -57,7 +57,7 @@ public class RedisEngine
         if (state.ShouldQueueRequests)
         {
             if (protocol is RedisProtocol.DISCARD)
-            {  
+            {
                 await ProcessDiscardAsync(socket, commands, state);
                 return protocol;
             }
@@ -422,19 +422,7 @@ public class RedisEngine
 
                 _shouldQueueResponses = false; // unset queue-response flag, because now we will send the EXEC response array
 
-                var array = $"*{_redisResponseQueue.Count}\r\n";
-
-                foreach (var item in _redisResponseQueue)
-                {
-                    if (item.DataType == DataType.INTEGER && item.IntegerValue.HasValue)
-                    {
-                        array += GetRespInteger(item.IntegerValue.Value);
-                    }
-                    else if (item.DataType == DataType.STRING && item.StringValue != null)
-                    {
-                        array += GetRespBulkString(item.StringValue);
-                    }
-                }
+                string array = GetExecResponseArray();
 
                 // array of mixed elements (string, int. etc.)
                 Logger.Log($"EXEC response: {array}");
@@ -663,6 +651,33 @@ public class RedisEngine
         }
     }
 
+    private string GetExecResponseArray()
+    {
+        var array = $"*{_redisResponseQueue.Count}\r\n";
+
+        foreach (var item in _redisResponseQueue)
+        {
+            if (item.ResponseType == ResponseType.INTEGER && item.IntegerValue.HasValue)
+            {
+                array += GetRespInteger(item.IntegerValue.Value);
+            }
+            else if (item.ResponseType == ResponseType.BULK_STRING && item.StringValue != null)
+            {
+                array += GetRespBulkString(item.StringValue);
+            }
+            else if (item.ResponseType == ResponseType.SIMPLE_STRING && item.StringValue != null)
+            {
+                array += GetRespSimpleString(item.StringValue);
+            }
+            else if (item.ResponseType == ResponseType.ERROR && item.StringValue != null)
+            {
+                array += GetRespErrorString(item.StringValue);
+            }
+        }
+
+        return array;
+    }
+
     string GetRedisProtocol(string[] commands) => commands[2].ToLower();
     private string GetRespBulkString(string payload) => $"${payload.Length}\r\n{payload}\r\n";
     private string GetRespSimpleString(string payload) => $"+{payload}\r\n";
@@ -686,7 +701,7 @@ public class RedisEngine
     {
         if (_shouldQueueResponses)
         {
-            AddToResponseQueue(message);
+            AddToResponseQueue(message, ResponseType.BULK_STRING);
             return;
         }
 
@@ -722,7 +737,7 @@ public class RedisEngine
     {
         if (_shouldQueueResponses)
         {
-            AddToResponseQueue(message);
+            AddToResponseQueue(message, ResponseType.SIMPLE_STRING);
             return;
         }
 
@@ -734,7 +749,7 @@ public class RedisEngine
     {
         if (_shouldQueueResponses)
         {
-            AddToResponseQueue(message);
+            AddToResponseQueue(message, ResponseType.ERROR);
             return;
         }
 
@@ -746,7 +761,7 @@ public class RedisEngine
     {
         if (_shouldQueueResponses)
         {
-            AddToResponseQueue("-1");
+            AddToResponseQueue("-1", ResponseType.NULL);
             return;
         }
 
@@ -757,7 +772,7 @@ public class RedisEngine
     {
         if (_shouldQueueResponses)
         {
-            AddToResponseQueue("OK");
+            AddToResponseQueue("OK", ResponseType.SIMPLE_STRING);
             return;
         }
 
@@ -779,11 +794,11 @@ public class RedisEngine
         await socket.SendAsync(response, SocketFlags.None);
     }
 
-    private void AddToResponseQueue(string payload)
+    private void AddToResponseQueue(string payload, ResponseType responseType = ResponseType.BULK_STRING)
     {
         _redisResponseQueue.Add(new RedisResponse
         {
-            DataType = DataType.STRING,
+            ResponseType = responseType,
             StringValue = payload
         });
     }
@@ -792,7 +807,7 @@ public class RedisEngine
     {
         _redisResponseQueue.Add(new RedisResponse
         {
-            DataType = DataType.INTEGER,
+            ResponseType = ResponseType.INTEGER,
             IntegerValue = payload
         });
     }
