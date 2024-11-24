@@ -191,7 +191,17 @@ public class RedisEngine
 
         var db = GetDatabase();
 
-        var isSetSuccessful = db.Store.TryAdd(key, valueToStore);
+        var isSetSuccessful = false;
+
+        if (db.Store.ContainsKey(key))
+        {
+            db.Store[key] = valueToStore;
+            isSetSuccessful = true;
+        }
+        else
+        {
+            isSetSuccessful = db.Store.TryAdd(key, valueToStore);
+        }
 
         if (fromMaster)
         {
