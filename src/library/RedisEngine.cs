@@ -12,7 +12,7 @@ public class RedisEngine
     private bool _rdbReceivedFromMaster = false;
     private int _bytesSentByMasterSinceLastQuery = 0;
     private List<RedisRequest> _redisRequestQueue = new List<RedisRequest>();
-    private bool _isQueueRequestReceived = false;
+    private bool _shouldQueueRequeusts = false;
 
     public RedisEngine(RdbHandler rdbHandler, RedisInstance redisInstance)
     {
@@ -363,13 +363,13 @@ public class RedisEngine
 
     private async Task ProcessMultiAsync(Socket socket, string[] commands)
     {
-        _isQueueRequestReceived = true;
+        _shouldQueueRequeusts = true;
         await SendOkSocketResponseAsync(socket);
     }
 
     private async Task ProcessExecAsync(Socket socket, string[] commands, ClientConnectionStats state)
     {
-        if (!_isQueueRequestReceived)
+        if (!_shouldQueueRequeusts)
         {
             await SendErrorStringSocketResponseAsync(socket, "EXEC without MULTI");
         }
@@ -386,6 +386,7 @@ public class RedisEngine
                     await ExecuteCommandAsync(socket, request, state);
                 }
             }
+            _shouldQueueRequeusts = false;
         }
     }
 
