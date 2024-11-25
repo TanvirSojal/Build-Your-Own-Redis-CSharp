@@ -17,4 +17,5 @@ public class RedisProtocol
     public const string MULTI = "multi";
     public const string EXEC = "exec";
     public const string DISCARD = "discard";
+    public const string XADD = "xadd";
 }

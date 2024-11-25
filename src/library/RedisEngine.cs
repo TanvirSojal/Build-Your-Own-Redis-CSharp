@@ -136,6 +136,10 @@ public class RedisEngine
                 await ProcessDiscardAsync(socket, commands, state);
                 break;
 
+            case RedisProtocol.XADD:
+                await ProcessXaddAsync(socket, commands, state);
+                break;
+
             case RedisProtocol.NONE:
                 break;
         }
@@ -354,14 +358,41 @@ public class RedisEngine
 
         var db = GetDatabase();
 
-        if (db.Store.ContainsKey(key))
+        if (db.Store.TryGetValue(key, out var value))
         {
-            await SendSimpleStringSocketResponseAsync(socket, "string");
+            await SendSimpleStringSocketResponseAsync(socket, value.Type.ToString().ToLower());
         }
         else
         {
             await SendSimpleStringSocketResponseAsync(socket, "none");
         }
+    }
+
+    private async Task ProcessXaddAsync(Socket socket, string[] commands, ClientConnectionState state)
+    {
+        var streamKey = commands[4];
+
+        var streamId = commands[6];
+
+        var key = commands[8];
+
+        var value = commands[10];
+
+        var keyValuePair = new KeyValuePair<string, string>(key, value);
+
+        var db = GetDatabase();
+
+        if (db.Store.TryGetValue(streamKey, out var streamValue))
+        {
+            streamValue.AddToStream(keyValuePair);
+        }
+        else
+        {
+            var redisValue = new RedisValue(keyValuePair, streamId);
+            db.Store.TryAdd(streamKey, redisValue);
+        }
+
+        await SendBulkStringSocketResponseAsync(socket, streamId);
     }
 
     private async Task ProcessIncrementAsync(Socket socket, string[] commands)
@@ -376,7 +407,6 @@ public class RedisEngine
 
             if (int.TryParse(redisValue.Value, out var integerValue))
             {
-
                 integerValue++;
 
                 redisValue.Value = integerValue.ToString();
