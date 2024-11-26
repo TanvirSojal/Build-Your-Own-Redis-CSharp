@@ -4,6 +4,7 @@ public class RedisState
     public string Version { get; set; } = "";
     public Dictionary<string, string> AuxFields { get; set; } = new Dictionary<string, string>();
     public Dictionary<int, RedisDatabase> Databases { get; set; } = new Dictionary<int, RedisDatabase>();
+    public Dictionary<string, StreamInformation> StreamInformationDictionary = new Dictionary<string, StreamInformation>();
 
     private string GetAuxFields()
     {

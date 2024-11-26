@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Net.Sockets;
 using System.Text;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 
 public class RedisEngine
@@ -15,14 +14,6 @@ public class RedisEngine
     private List<RedisRequest> _redisRequestQueue = new List<RedisRequest>();
     private List<RedisResponse> _redisResponseQueue = new List<RedisResponse>();
     private bool _shouldQueueResponses = false;
-
-    private HashSet<string> StreamIdSet = new HashSet<string>();
-
-    // stream data
-    private string _lastStreamId;
-    private long _lastStreamMsValue = 0;
-    private long _lastStreamSequenceNumber = 0;
-
 
     public RedisEngine(RdbHandler rdbHandler, RedisInstance redisInstance)
     {
@@ -386,12 +377,16 @@ public class RedisEngine
 
         var value = commands[10];
 
-        var validationStatus = await validateStreamIdAsync(socket, streamId);
+        Logger.Log("Here");
 
-        if (!validationStatus)
+        var validatedStreamId = await validateAndGetStreamIdAsync(socket, streamKey, streamId);
+
+        if (validatedStreamId == null)
         {
             return;
         }
+
+        Logger.Log($"Validated stream id {validatedStreamId}");
 
         var keyValuePair = new KeyValuePair<string, string>(key, value);
 
@@ -403,11 +398,11 @@ public class RedisEngine
         }
         else
         {
-            var redisValue = new RedisValue(keyValuePair, streamId);
+            var redisValue = new RedisValue(keyValuePair, validatedStreamId);
             db.Store.TryAdd(streamKey, redisValue);
         }
 
-        await SendBulkStringSocketResponseAsync(socket, streamId);
+        await SendBulkStringSocketResponseAsync(socket, validatedStreamId);
     }
 
     private async Task ProcessIncrementAsync(Socket socket, string[] commands)
@@ -670,6 +665,11 @@ public class RedisEngine
         return db;
     }
 
+    private Dictionary<string, StreamInformation> GetStreamInformationDictionary()
+    {
+        return _rdbHandler.RedisState.StreamInformationDictionary;
+    }
+
     private async Task PropagateToReplicaAsync(string request, string protocol, ClientConnectionState state)
     {
         if (_redisInstance.Role == ServerRole.Master && protocol is RedisProtocol.SET)
@@ -733,33 +733,72 @@ public class RedisEngine
         return array;
     }
 
-    private async Task<bool> validateStreamIdAsync(Socket socket, string streamId)
+    private async Task<string?> validateAndGetStreamIdAsync(Socket socket, string streamKey, string streamId)
     {
         // handle 0-0, -1-0 (first part negative), 0--1 (second part negative), -1--1 (both parts negative)
         // pragmatically assuming if '-' appears more than once, it is used for a negative sign
-        if (streamId == "0-0" || streamId.StartsWith("-") || streamId.Split("-").Length != 2)
+        if (streamId == "0-0" || streamId.StartsWith("-") || streamId.EndsWith("-") || (streamId != "*" && streamId.Split("-").Length != 2))
         {
             await SendErrorStringSocketResponseAsync(socket, "The ID specified in XADD must be greater than 0-0");
-        
-            return false;
+
+            return null;
+        }
+
+        var streamInfoDictionary = GetStreamInformationDictionary();
+
+        var streamKeyExists = streamInfoDictionary.ContainsKey(streamKey);
+
+        var streamInfo = streamKeyExists ? streamInfoDictionary[streamKey] : new StreamInformation(streamKey);
+
+        Logger.Log($"Retrieved stream info: {streamInfo}");
+
+        if (streamId == "*") // handle full generation
+        {
+            var currentUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+            if (streamInfo.LastStreamIdMsValue == currentUnixMs)
+            {
+                streamInfo.LastStreamIdSequenceNumber++;
+            }
+
+            streamInfo.LastStreamIdMsValue = currentUnixMs;
+
+            streamInfoDictionary[streamKey] = streamInfo;
+
+            return streamInfo.StreamId;
         }
 
         var newIdParts = streamId.Split("-");
 
+        if (newIdParts[1] == "*" && long.TryParse(newIdParts[0], out var msValue)) // ends with '*'
+        {
+            if (streamKeyExists && msValue == streamInfo.LastStreamIdMsValue)
+            {
+                newIdParts[1] = (streamInfo.LastStreamIdSequenceNumber + 1).ToString();
+            }
+            else
+            {
+                newIdParts[1] = newIdParts[0] == "0" ? "1" : "0";
+            }
+        }
+
+        Logger.Log($"New stream id {newIdParts[0]}-{newIdParts[1]}");
+
         if (long.TryParse(newIdParts[0], out var newMsValue) && long.TryParse(newIdParts[1], out var newSequenceNumber))
         {
-            if (newMsValue > _lastStreamMsValue || newMsValue == _lastStreamMsValue && newSequenceNumber > _lastStreamSequenceNumber){
-                _lastStreamId = streamId;
-                _lastStreamMsValue = newMsValue;
-                _lastStreamSequenceNumber = newSequenceNumber;
+            if (newMsValue > streamInfo.LastStreamIdMsValue || newMsValue == streamInfo.LastStreamIdMsValue && newSequenceNumber > streamInfo.LastStreamIdSequenceNumber)
+            {
+                streamInfo.LastStreamIdMsValue = newMsValue;
+                streamInfo.LastStreamIdSequenceNumber = newSequenceNumber;
+                streamInfoDictionary[streamKey] = streamInfo;
 
-                return true;
+                return streamInfo.StreamId;
             }
         }
 
         await SendErrorStringSocketResponseAsync(socket, "The ID specified in XADD is equal or smaller than the target stream top item");
 
-        return false;
+        return null;
     }
 
     string GetRedisProtocol(string[] commands) => commands[2].ToLower();
