@@ -472,9 +472,28 @@ public class RedisEngine
 
     private async Task ProcessXreadAsync(Socket socket, string[] commands)
     {
-        _ = commands[4]; // The string "streams" does not add value right now
+        var commandIndex = 4;
 
-        var commandIndex = 6;
+        var isBlockCommand = false;
+
+        var blockTimeout = 0;
+
+        Logger.Log("Processing");
+
+        if (commands[commandIndex].Equals("block", StringComparison.OrdinalIgnoreCase))
+        {
+            isBlockCommand = true;
+
+            commandIndex += 2;
+
+            blockTimeout = int.Parse(commands[commandIndex]);
+
+            commandIndex += 2;
+        }
+
+        var subCommand = commands[commandIndex]; // The string "streams" does not add value right now
+
+        commandIndex += 2;
 
         // the size of "streamKeys" and "streamIds" should be equal
         var streamKeys = new List<string>();
@@ -501,27 +520,40 @@ public class RedisEngine
 
         var db = GetDatabase();
 
-        var resultList = new List<string>();
+        List<string> resultList = GetStreamDataAsResp(streamKeys, streamIds, db);
 
-        for (var index = 0; index < streamKeys.Count; index++)
+        if (resultList.Count == 0 && isBlockCommand)
         {
-            var streamKey = streamKeys[index];
-            var streamId = streamIds[index].ToStreamRangeStartId();
+            Logger.Log($"Item not found, blocking for {blockTimeout} ms.");
 
-            Logger.Log($"Querying: {streamKey} | {streamId}");
-
-            if (db.Store.TryGetValue(streamKey, out var value) && value.Stream != null)
+            if (blockTimeout > 0)
             {
-                var result = value.Stream.Entries.Where(e => e.EntryId.IsGreaterThan(streamId)).ToList();
+                // instead of returning when any one stream is available, we are simply blocking the thread for the entire timeout for simplicity
+                Thread.Sleep(blockTimeout);
 
-                var array = new string[]
+                Logger.Log($"Checking again for item after block.");
+
+                resultList = GetStreamDataAsResp(streamKeys, streamIds, db);
+
+                Logger.Log($"Check done.");
+
+                if (resultList.Count == 0)
                 {
-                    RespUtility.GetRespBulkString(streamKey),
-                    result.ToRespBulkArray()
-                };
+                    await SendNullSocketResponseAsync(socket);
 
-                resultList.Add(RespUtility.GetRespBulkArrayWithoutConversion(array));
+                    return;
+                }
             }
+            // else if (blockTimeout == 0)
+            // {
+            //     // for blocking without timeout, instead of event-driven architecture, we are polling (periodically checking) for simplicity
+            //     while (resultList.Count == 0)
+            //     {
+            //         Thread.Sleep(200);
+
+            //         resultList = GetStreamDataAsResp(streamKeys, streamIds, db);
+            //     }
+            // }
         }
 
         // foreach (var s in streamKeys) Logger.Log($"key: {s}");
@@ -928,6 +960,41 @@ public class RedisEngine
         await SendErrorStringSocketResponseAsync(socket, "The ID specified in XADD is equal or smaller than the target stream top item");
 
         return null;
+    }
+
+    private static List<string> GetStreamDataAsResp(List<string> streamKeys, List<string> streamIds, RedisDatabase db)
+    {
+        var resultList = new List<string>();
+
+        for (var index = 0; index < streamKeys.Count; index++)
+        {
+            var streamKey = streamKeys[index];
+            var streamId = streamIds[index].ToStreamRangeStartId();
+
+            Logger.Log($"Querying: {streamKey} | {streamId}");
+
+            if (db.Store.TryGetValue(streamKey, out var value) && value.Stream != null)
+            {
+                var result = value.Stream.Entries.Where(e => e.EntryId.IsGreaterThan(streamId)).ToList();
+
+                Logger.Log($"result count: {result.Count}");
+
+                if (result.Count > 0)
+                {
+                    var array = new string[]
+                    {
+                        RespUtility.GetRespBulkString(streamKey),
+                        result.ToRespBulkArray()
+                    };
+
+                    resultList.Add(RespUtility.GetRespBulkArrayWithoutConversion(array));
+                }
+            }
+        }
+
+        Logger.Log($"DB query done for XREAD. resultList size: {resultList.Count}");
+
+        return resultList;
     }
 
     string GetRedisProtocol(string[] commands) => commands[2].ToLower();

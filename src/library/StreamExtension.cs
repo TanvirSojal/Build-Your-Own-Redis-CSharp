@@ -53,8 +53,6 @@ public static class StreamExtension
             dataBulkArray
         };
 
-        Logger.Log($"entry bulk array: {array}");
-
         return RespUtility.GetRespBulkArrayWithoutConversion(array.ToArray());
     }
 
@@ -65,7 +63,7 @@ public static class StreamExtension
             return new StreamEntryId
             {
                 Timestamp = 0,
-                Sequence = 1
+                Sequence = 0
             };
         }
 
