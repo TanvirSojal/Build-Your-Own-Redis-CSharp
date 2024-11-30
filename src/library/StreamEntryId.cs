@@ -1,7 +1,7 @@
 public class StreamEntryId : IComparable<StreamEntryId>
 {
-    public long Timestamp { get; set; }
-    public long Sequence { get; set; }
+    public long Timestamp { get; set; } = 0;
+    public long Sequence { get; set; } = 0;
 
     public int CompareTo(StreamEntryId? other)
     {

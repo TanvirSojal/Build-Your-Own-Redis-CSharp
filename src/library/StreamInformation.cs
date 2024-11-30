@@ -1,9 +1,9 @@
 public class StreamInformation
 {
     public string StreamKey { get; set; }
-    public long LastStreamIdMsValue { get; set; } = 0;
+    public long LastStreamIdTimestamp { get; set; } = 0;
     public long LastStreamIdSequenceNumber { get; set; } = 0;
-    public string StreamId => $"{LastStreamIdMsValue}-{LastStreamIdSequenceNumber}";
+    public string StreamId => $"{LastStreamIdTimestamp}-{LastStreamIdSequenceNumber}";
 
     public StreamInformation(string streamKey)
     {
@@ -12,13 +12,13 @@ public class StreamInformation
 
     public StreamInformation Initialize()
     {
-        LastStreamIdMsValue = 0;
+        LastStreamIdTimestamp = 0;
         LastStreamIdSequenceNumber = 1;
         return this;
     }
 
     public override string ToString()
     {
-        return $"__streamKey: {StreamKey} | __streamId: {StreamId} | __lastMs: {LastStreamIdMsValue} | __lastSeq: {LastStreamIdSequenceNumber}";
+        return $"__streamKey: {StreamKey} | __streamId: {StreamId} | __lastMs: {LastStreamIdTimestamp} | __lastSeq: {LastStreamIdSequenceNumber}";
     }
 }

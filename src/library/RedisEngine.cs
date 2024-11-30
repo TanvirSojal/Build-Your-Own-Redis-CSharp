@@ -478,7 +478,7 @@ public class RedisEngine
 
         var blockTimeout = 0;
 
-        Logger.Log("Processing");
+        var blockUntilAnyEntryAvailable = false;
 
         if (commands[commandIndex].Equals("block", StringComparison.OrdinalIgnoreCase))
         {
@@ -500,7 +500,7 @@ public class RedisEngine
 
         var streamIds = new List<string>();
 
-        while (commandIndex < commands.Length && !commands[commandIndex].IsStreamId())
+        while (commandIndex < commands.Length && !commands[commandIndex].IsStreamId() && commands[commandIndex] != "$")
         {
             var streamKey = commands[commandIndex];
 
@@ -513,14 +513,45 @@ public class RedisEngine
         {
             var streamId = commands[commandIndex];
 
+            if (streamId == "$")
+            {
+                blockUntilAnyEntryAvailable = true;
+            }
+
             streamIds.Add(streamId);
 
             commandIndex += 2;
         }
 
+        // foreach (var s in streamKeys) Logger.Log($"key: {s}");
+        // foreach (var i in streamIds) Logger.Log($"id: {i}");
+
+        var infoSnapshot = new Dictionary<string, StreamEntryId>();
+
+        if (blockUntilAnyEntryAvailable)
+        {
+            // we keep a snapshot so that our query parameter (lastTimestamp and lastSequence) does not change as new values are added
+            // otherwise we will be stuck in an infinite loop chasing the carrot
+            var infoDictionary = GetStreamInformationDictionary();
+
+            foreach (var streamKey in streamKeys)
+            {
+                if (infoDictionary.TryGetValue(streamKey, out var info))
+                {
+                    var entryId = new StreamEntryId
+                    {
+                        Timestamp = info.LastStreamIdTimestamp,
+                        Sequence = info.LastStreamIdSequenceNumber
+                    };
+
+                    infoSnapshot.TryAdd(streamKey, entryId);
+                }
+            }
+        }
+
         var db = GetDatabase();
 
-        List<string> resultList = GetStreamDataAsResp(streamKeys, streamIds, db);
+        List<string> resultList = GetStreamDataAsResp(streamKeys, streamIds, db, infoSnapshot);
 
         if (resultList.Count == 0 && isBlockCommand)
         {
@@ -529,11 +560,11 @@ public class RedisEngine
             if (blockTimeout > 0)
             {
                 // instead of returning when any one stream is available, we are simply blocking the thread for the entire timeout for simplicity
-                Thread.Sleep(blockTimeout);
+                await Task.Delay(blockTimeout);
 
                 Logger.Log($"Checking again for item after block.");
 
-                resultList = GetStreamDataAsResp(streamKeys, streamIds, db);
+                resultList = GetStreamDataAsResp(streamKeys, streamIds, db, infoSnapshot);
 
                 Logger.Log($"Check done.");
 
@@ -549,15 +580,12 @@ public class RedisEngine
                 // for blocking without timeout, instead of event-driven architecture, we are polling (periodically checking) for simplicity
                 while (resultList.Count == 0)
                 {
-                    Thread.Sleep(200);
+                    await Task.Delay(200);
 
-                    resultList = GetStreamDataAsResp(streamKeys, streamIds, db);
+                    resultList = GetStreamDataAsResp(streamKeys, streamIds, db, infoSnapshot);
                 }
             }
         }
-
-        // foreach (var s in streamKeys) Logger.Log($"key: {s}");
-        // foreach (var i in streamIds) Logger.Log($"id: {i}");
 
         var response = RespUtility.GetRespBulkArrayWithoutConversion(resultList.ToArray());
 
@@ -917,12 +945,12 @@ public class RedisEngine
         {
             var currentUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-            if (streamInfo.LastStreamIdMsValue == currentUnixMs)
+            if (streamInfo.LastStreamIdTimestamp == currentUnixMs)
             {
                 streamInfo.LastStreamIdSequenceNumber++;
             }
 
-            streamInfo.LastStreamIdMsValue = currentUnixMs;
+            streamInfo.LastStreamIdTimestamp = currentUnixMs;
 
             streamInfoDictionary[streamKey] = streamInfo;
 
@@ -933,7 +961,7 @@ public class RedisEngine
 
         if (newIdParts[1] == "*" && long.TryParse(newIdParts[0], out var msValue)) // ends with '*'
         {
-            if (streamKeyExists && msValue == streamInfo.LastStreamIdMsValue)
+            if (streamKeyExists && msValue == streamInfo.LastStreamIdTimestamp)
             {
                 newIdParts[1] = (streamInfo.LastStreamIdSequenceNumber + 1).ToString();
             }
@@ -947,9 +975,9 @@ public class RedisEngine
 
         if (long.TryParse(newIdParts[0], out var newMsValue) && long.TryParse(newIdParts[1], out var newSequenceNumber))
         {
-            if (newMsValue > streamInfo.LastStreamIdMsValue || newMsValue == streamInfo.LastStreamIdMsValue && newSequenceNumber > streamInfo.LastStreamIdSequenceNumber)
+            if (newMsValue > streamInfo.LastStreamIdTimestamp || newMsValue == streamInfo.LastStreamIdTimestamp && newSequenceNumber > streamInfo.LastStreamIdSequenceNumber)
             {
-                streamInfo.LastStreamIdMsValue = newMsValue;
+                streamInfo.LastStreamIdTimestamp = newMsValue;
                 streamInfo.LastStreamIdSequenceNumber = newSequenceNumber;
                 streamInfoDictionary[streamKey] = streamInfo;
 
@@ -962,14 +990,27 @@ public class RedisEngine
         return null;
     }
 
-    private static List<string> GetStreamDataAsResp(List<string> streamKeys, List<string> streamIds, RedisDatabase db)
+    private List<string> GetStreamDataAsResp(List<string> streamKeys, List<string> streamIds, RedisDatabase db, Dictionary<string, StreamEntryId> infoSnapshot)
     {
         var resultList = new List<string>();
 
         for (var index = 0; index < streamKeys.Count; index++)
         {
             var streamKey = streamKeys[index];
-            var streamId = streamIds[index].ToStreamRangeStartId();
+
+            StreamEntryId streamId = new();
+
+            if (streamIds[index] == "$") // we only want new entry (equivalent to querying with last stream id)
+            {
+                if (infoSnapshot.TryGetValue(streamKey, out var idSnapshot))
+                {
+                    streamId = idSnapshot;
+                }
+            }
+            else
+            {
+                streamId = streamIds[index].ToStreamRangeStartId();
+            }
 
             Logger.Log($"Querying: {streamKey} | {streamId}");
 
