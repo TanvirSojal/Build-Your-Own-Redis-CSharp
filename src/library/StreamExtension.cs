@@ -28,7 +28,7 @@ public static class StreamExtension
         return RespUtility.GetRespBulkArrayWithoutConversion(array.ToArray());
     }
 
-    private static string ToArray(this StreamEntry entry)
+    public static string ToArray(this StreamEntry entry)
     {
         var dataArray = new List<string>();
 
@@ -53,4 +53,71 @@ public static class StreamExtension
         return RespUtility.GetRespBulkArrayWithoutConversion(array.ToArray());
     }
 
+    public static StreamEntryId ToStreamRangeStartId(this string streamId)
+    {
+        if (streamId == "-")
+        {
+            return new StreamEntryId
+            {
+                Timestamp = 0,
+                Sequence = 1
+            };
+        }
+
+        var parts = streamId.Split('-');
+
+        // default values for range start
+        var timestamp = 0L;
+        var sequence = 0L;
+
+        if (parts.Length >= 1)
+        {
+            timestamp = long.Parse(parts[0]);
+        }
+
+        if (parts.Length == 2)
+        {
+            sequence = long.Parse(parts[1]);
+        }
+
+        return new StreamEntryId
+        {
+            Timestamp = timestamp,
+            Sequence = sequence,
+        };
+    }
+
+    public static StreamEntryId ToStreamRangeEndId(this string streamId)
+    {
+        if (streamId == "+")
+        {
+            return new StreamEntryId
+            {
+                Timestamp = long.MaxValue,
+                Sequence = long.MaxValue
+            };
+        }
+
+        var parts = streamId.Split('-');
+
+        // default valeues for range end
+        var timestamp = 0L;
+        var sequence = long.MaxValue;
+
+        if (parts.Length >= 1)
+        {
+            timestamp = long.Parse(parts[0]);
+        }
+
+        if (parts.Length == 2)
+        {
+            sequence = long.Parse(parts[1]);
+        }
+
+        return new StreamEntryId
+        {
+            Timestamp = timestamp,
+            Sequence = sequence,
+        };
+    }
 }

@@ -435,9 +435,9 @@ public class RedisEngine
         Logger.Log($"Stream Id Start: {streamIdStart}");
         Logger.Log($"Stream Id end: {streamIdEnd}");
 
-        var rangeStart = ParseStreamId(streamIdStart);
+        var rangeStart = streamIdStart.ToStreamRangeStartId();
 
-        var rangeEnd = ParseStreamId(streamIdEnd, isRangeEnd: true);
+        var rangeEnd = streamIdEnd.ToStreamRangeEndId();
 
         Logger.Log($"Query range {rangeStart} - {rangeEnd}");
 
@@ -860,35 +860,6 @@ public class RedisEngine
         await SendErrorStringSocketResponseAsync(socket, "The ID specified in XADD is equal or smaller than the target stream top item");
 
         return null;
-    }
-
-    private StreamEntryId ParseStreamId(string streamId, bool isRangeEnd = false)
-    {
-        var parts = streamId.Split("-");
-        long msValue = 0;
-        long sequenceNumber = 0;
-
-        Logger.Log($"StreamId {streamId} : Parts length: {parts.Length}");
-
-        if (parts.Length >= 1)
-        {
-            msValue = long.Parse(parts[0]);
-        }
-
-        if (parts.Length == 2)
-        {
-            sequenceNumber = long.Parse(parts[1]);
-        }
-        else if (isRangeEnd)
-        {
-            sequenceNumber = long.MaxValue;
-        }
-
-        return new StreamEntryId
-        {
-            Timestamp = msValue,
-            Sequence = sequenceNumber,
-        };
     }
 
     string GetRedisProtocol(string[] commands) => commands[2].ToLower();
