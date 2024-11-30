@@ -1,5 +1,10 @@
 public static class StreamExtension
 {
+    public static bool IsGreaterThan(this StreamEntryId entryId, StreamEntryId otherEntryId)
+    {
+        return entryId.CompareTo(otherEntryId) > 0;
+    }
+
     public static bool IsLessThanOrEqualTo(this StreamEntryId entryId, StreamEntryId otherEntryId)
     {
         return entryId.CompareTo(otherEntryId) <= 0;
@@ -119,5 +124,10 @@ public static class StreamExtension
             Timestamp = timestamp,
             Sequence = sequence,
         };
+    }
+
+    public static bool IsStreamId(this string str)
+    {
+        return long.TryParse(str.Split("-")[0], out _);
     }
 }

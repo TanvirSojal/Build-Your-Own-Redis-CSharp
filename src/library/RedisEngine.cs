@@ -143,6 +143,10 @@ public class RedisEngine
                 await ProcessXrangeAsync(socket, commands);
                 break;
 
+            case RedisProtocol.XREAD:
+                await ProcessXreadAsync(socket, commands);
+                break;
+
             case RedisProtocol.NONE:
                 break;
         }
@@ -461,7 +465,71 @@ public class RedisEngine
 
         var response = result.ToRespBulkArray();
 
-        Logger.Log($"Sending [${response}]");
+        Logger.Log($"Sending [{response}]");
+
+        await SendSocketResponseAsync(socket, response);
+    }
+
+    private async Task ProcessXreadAsync(Socket socket, string[] commands)
+    {
+        _ = commands[4]; // The string "streams" does not add value right now
+
+        var commandIndex = 6;
+
+        // the size of "streamKeys" and "streamIds" should be equal
+        var streamKeys = new List<string>();
+
+        var streamIds = new List<string>();
+
+        while (commandIndex < commands.Length && !commands[commandIndex].IsStreamId())
+        {
+            var streamKey = commands[commandIndex];
+
+            streamKeys.Add(streamKey);
+
+            commandIndex += 2;
+        }
+
+        while (commandIndex < commands.Length)
+        {
+            var streamId = commands[commandIndex];
+
+            streamIds.Add(streamId);
+
+            commandIndex += 2;
+        }
+
+        var db = GetDatabase();
+
+        var resultList = new List<string>();
+
+        for (var index = 0; index < streamKeys.Count; index++)
+        {
+            var streamKey = streamKeys[index];
+            var streamId = streamIds[index].ToStreamRangeStartId();
+
+            Logger.Log($"Querying: {streamKey} | {streamId}");
+
+            if (db.Store.TryGetValue(streamKey, out var value) && value.Stream != null)
+            {
+                var result = value.Stream.Entries.Where(e => e.EntryId.IsGreaterThan(streamId)).ToList();
+
+                var array = new string[]
+                {
+                    RespUtility.GetRespBulkString(streamKey),
+                    result.ToRespBulkArray()
+                };
+
+                resultList.Add(RespUtility.GetRespBulkArrayWithoutConversion(array));
+            }
+        }
+
+        // foreach (var s in streamKeys) Logger.Log($"key: {s}");
+        // foreach (var i in streamIds) Logger.Log($"id: {i}");
+
+        var response = RespUtility.GetRespBulkArrayWithoutConversion(resultList.ToArray());
+
+        Logger.Log($"XREAD response: [{response}]");
 
         await SendSocketResponseAsync(socket, response);
     }

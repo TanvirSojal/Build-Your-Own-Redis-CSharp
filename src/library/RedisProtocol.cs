@@ -19,4 +19,5 @@ public class RedisProtocol
     public const string DISCARD = "discard";
     public const string XADD = "xadd";
     public const string XRANGE = "xrange";
+    public const string XREAD = "xread";
 }
