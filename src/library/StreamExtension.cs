@@ -9,4 +9,9 @@ public static class StreamExtension
     {
         return entryId.CompareTo(otherEntryId) >= 0;
     }
+
+    public static string ToRespBulkArray(this List<StreamEntry> entries)
+    {
+        return "*0\r\n";
+    }
 }

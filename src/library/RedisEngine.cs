@@ -448,9 +448,7 @@ public class RedisEngine
             throw new InvalidOperationException($"No stream found for key: {streamKey}");
         }
 
-        var stream = value.Stream;
-
-        var result = stream.Entries
+        var result = value.Stream.Entries
             .Where(e => e.EntryId.IsGreaterThanOrEqualTo(rangeStart) && e.EntryId.IsLessThanOrEqualTo(rangeEnd))
             .ToList();
 
@@ -460,8 +458,13 @@ public class RedisEngine
         {
             Logger.Log($">{v.EntryId}");
         }
-    }
 
+        var response = result.ToRespBulkArray();
+
+        Logger.Log($"Sending [${response}]");
+
+        await SendSocketResponseAsync(socket, response);
+    }
 
     private async Task ProcessIncrementAsync(Socket socket, string[] commands)
     {
@@ -772,19 +775,19 @@ public class RedisEngine
         {
             if (item.ResponseType == ResponseType.INTEGER && item.IntegerValue.HasValue)
             {
-                array += GetRespInteger(item.IntegerValue.Value);
+                array += RespUtility.GetRespInteger(item.IntegerValue.Value);
             }
             else if (item.ResponseType == ResponseType.BULK_STRING && item.StringValue != null)
             {
-                array += GetRespBulkString(item.StringValue);
+                array += RespUtility.GetRespBulkString(item.StringValue);
             }
             else if (item.ResponseType == ResponseType.SIMPLE_STRING && item.StringValue != null)
             {
-                array += GetRespSimpleString(item.StringValue);
+                array += RespUtility.GetRespSimpleString(item.StringValue);
             }
             else if (item.ResponseType == ResponseType.ERROR && item.StringValue != null)
             {
-                array += GetRespErrorString(item.StringValue);
+                array += RespUtility.GetRespErrorString(item.StringValue);
             }
         }
 
@@ -889,23 +892,7 @@ public class RedisEngine
     }
 
     string GetRedisProtocol(string[] commands) => commands[2].ToLower();
-    private string GetRespBulkString(string payload) => $"${payload.Length}\r\n{payload}\r\n";
-    private string GetRespSimpleString(string payload) => $"+{payload}\r\n";
-    private string GetRespErrorString(string payload) => $"-ERR {payload}\r\n";
-    private string GetNullBulkString() => "$-1\r\n";
-    private string GetOkResponseString() => GetRespSimpleString("OK");
-    private string GetRespInteger(long number) => $":{number}\r\n";
-    private string GetRespBulkArray(string[] payload)
-    {
-        var response = $"*{payload.Length}\r\n";
 
-        foreach (var item in payload)
-        {
-            response += GetRespBulkString(item);
-        }
-
-        return response;
-    }
 
     private async Task SendBulkStringSocketResponseAsync(Socket socket, string message)
     {
@@ -915,7 +902,7 @@ public class RedisEngine
             return;
         }
 
-        var bulkString = GetRespBulkString(message);
+        var bulkString = RespUtility.GetRespBulkString(message);
         await SendSocketResponseAsync(socket, bulkString);
     }
 
@@ -927,7 +914,7 @@ public class RedisEngine
         //     return;
         // }
 
-        var bulkArray = GetRespBulkArray(message);
+        var bulkArray = RespUtility.GetRespBulkArray(message);
         await SendSocketResponseAsync(socket, bulkArray);
     }
 
@@ -939,7 +926,7 @@ public class RedisEngine
             return;
         }
 
-        var integer = GetRespInteger(number);
+        var integer = RespUtility.GetRespInteger(number);
         await SendSocketResponseAsync(socket, integer);
     }
 
@@ -951,7 +938,7 @@ public class RedisEngine
             return;
         }
 
-        var simpleString = GetRespSimpleString(message);
+        var simpleString = RespUtility.GetRespSimpleString(message);
         await SendSocketResponseAsync(socket, simpleString);
     }
 
@@ -963,7 +950,7 @@ public class RedisEngine
             return;
         }
 
-        var errorString = GetRespErrorString(message);
+        var errorString = RespUtility.GetRespErrorString(message);
         await SendSocketResponseAsync(socket, errorString);
     }
 
@@ -975,7 +962,7 @@ public class RedisEngine
             return;
         }
 
-        await SendSocketResponseAsync(socket, GetNullBulkString());
+        await SendSocketResponseAsync(socket, RespUtility.GetNullBulkString());
     }
 
     private async Task SendOkSocketResponseAsync(Socket socket)
@@ -986,7 +973,7 @@ public class RedisEngine
             return;
         }
 
-        await SendSocketResponseAsync(socket, GetOkResponseString());
+        await SendSocketResponseAsync(socket, RespUtility.GetOkResponseString());
     }
 
     private async Task SendRdbSocketResponseAsync(Socket socket, byte[] data)
@@ -1021,4 +1008,6 @@ public class RedisEngine
             IntegerValue = payload
         });
     }
+
+
 }
