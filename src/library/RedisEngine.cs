@@ -544,16 +544,16 @@ public class RedisEngine
                     return;
                 }
             }
-            // else if (blockTimeout == 0)
-            // {
-            //     // for blocking without timeout, instead of event-driven architecture, we are polling (periodically checking) for simplicity
-            //     while (resultList.Count == 0)
-            //     {
-            //         Thread.Sleep(200);
+            else if (blockTimeout == 0)
+            {
+                // for blocking without timeout, instead of event-driven architecture, we are polling (periodically checking) for simplicity
+                while (resultList.Count == 0)
+                {
+                    Thread.Sleep(200);
 
-            //         resultList = GetStreamDataAsResp(streamKeys, streamIds, db);
-            //     }
-            // }
+                    resultList = GetStreamDataAsResp(streamKeys, streamIds, db);
+                }
+            }
         }
 
         // foreach (var s in streamKeys) Logger.Log($"key: {s}");
