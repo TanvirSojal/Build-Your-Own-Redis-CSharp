@@ -30,6 +30,6 @@ public class StreamEntryId : IComparable<StreamEntryId>
 
     override public string ToString()
     {
-        return $"[Timestamp: {Timestamp} | Sequence: {Sequence}]";
+        return $"{Timestamp}-{Sequence}";
     }
 }

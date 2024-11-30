@@ -17,4 +17,15 @@ public static class RespUtility
 
         return response;
     }
+    public static string GetRespBulkArrayWithoutConversion(string[] payload)
+    {
+        var response = $"*{payload.Length}\r\n";
+
+        foreach (var item in payload)
+        {
+            response += item;
+        }
+
+        return response;
+    }
 }
