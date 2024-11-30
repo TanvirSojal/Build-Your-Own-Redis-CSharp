@@ -136,7 +136,11 @@ public class RedisEngine
                 break;
 
             case RedisProtocol.XADD:
-                await ProcessXaddAsync(socket, commands, state);
+                await ProcessXaddAsync(socket, commands);
+                break;
+
+            case RedisProtocol.XRANGE:
+                await ProcessXrangeAsync(socket, commands);
                 break;
 
             case RedisProtocol.NONE:
@@ -367,43 +371,97 @@ public class RedisEngine
         }
     }
 
-    private async Task ProcessXaddAsync(Socket socket, string[] commands, ClientConnectionState state)
+    private async Task ProcessXaddAsync(Socket socket, string[] commands)
     {
         var streamKey = commands[4];
 
-        var streamId = commands[6];
-
-        var key = commands[8];
-
-        var value = commands[10];
+        var streamEntryId = commands[6];
 
         Logger.Log("Here");
 
-        var validatedStreamId = await validateAndGetStreamIdAsync(socket, streamKey, streamId);
+        var validatedStreamEntryId = await validateAndGetStreamIdAsync(socket, streamKey, streamEntryId);
 
-        if (validatedStreamId == null)
+        if (validatedStreamEntryId == null)
         {
             return;
         }
 
-        Logger.Log($"Validated stream id {validatedStreamId}");
-
-        var keyValuePair = new KeyValuePair<string, string>(key, value);
+        Logger.Log($"Validated stream entry id: {validatedStreamEntryId}");
 
         var db = GetDatabase();
 
+        var commandIndex = 8;
+
+        var streamEntries = new List<KeyValuePair<string, string>>();
+
+        while (commandIndex + 2 < commands.Length)
+        {
+            var keyIndex = commandIndex;
+
+            var valueIndex = commandIndex + 2;
+
+            var key = commands[keyIndex];
+
+            var value = commands[valueIndex];
+
+            var keyValuePair = new KeyValuePair<string, string>(key, value);
+
+            streamEntries.Add(keyValuePair);
+
+            commandIndex += 4;
+        }
+
         if (db.Store.TryGetValue(streamKey, out var streamValue))
         {
-            streamValue.AddToStream(keyValuePair);
+            streamValue.AddToStream(validatedStreamEntryId, streamEntries);
         }
         else
         {
-            var redisValue = new RedisValue(keyValuePair, validatedStreamId);
+            var redisValue = new RedisValue(streamEntries, validatedStreamEntryId);
             db.Store.TryAdd(streamKey, redisValue);
         }
 
-        await SendBulkStringSocketResponseAsync(socket, validatedStreamId);
+        await SendBulkStringSocketResponseAsync(socket, validatedStreamEntryId);
     }
+
+    private async Task ProcessXrangeAsync(Socket socket, string[] commands)
+    {
+        var streamKey = commands[4];
+
+        var streamIdStart = commands[6];
+
+        var streamIdEnd = commands[8];
+
+        Logger.Log($"Stream Id Start: {streamIdStart}");
+        Logger.Log($"Stream Id end: {streamIdEnd}");
+
+        var rangeStart = ParseStreamId(streamIdStart);
+
+        var rangeEnd = ParseStreamId(streamIdEnd, isRangeEnd: true);
+
+        Logger.Log($"Query range {rangeStart} - {rangeEnd}");
+
+        var db = GetDatabase();
+
+        if (!(db.Store.TryGetValue(streamKey, out var value) && value.Stream is not null))
+        {
+            throw new InvalidOperationException($"No stream found for key: {streamKey}");
+        }
+
+        var stream = value.Stream;
+
+        var result = stream.Entries
+            .Where(e => e.EntryId.IsGreaterThanOrEqualTo(rangeStart) && e.EntryId.IsLessThanOrEqualTo(rangeEnd))
+            .ToList();
+
+        Logger.Log($"Total found: {result.Count}");
+
+        foreach (var v in result)
+        {
+            Logger.Log($">{v.EntryId}");
+        }
+    }
+
 
     private async Task ProcessIncrementAsync(Socket socket, string[] commands)
     {
@@ -799,6 +857,35 @@ public class RedisEngine
         await SendErrorStringSocketResponseAsync(socket, "The ID specified in XADD is equal or smaller than the target stream top item");
 
         return null;
+    }
+
+    private StreamEntryId ParseStreamId(string streamId, bool isRangeEnd = false)
+    {
+        var parts = streamId.Split("-");
+        long msValue = 0;
+        long sequenceNumber = 0;
+
+        Logger.Log($"StreamId {streamId} : Parts length: {parts.Length}");
+
+        if (parts.Length >= 1)
+        {
+            msValue = long.Parse(parts[0]);
+        }
+
+        if (parts.Length == 2)
+        {
+            sequenceNumber = long.Parse(parts[1]);
+        }
+        else if (isRangeEnd)
+        {
+            sequenceNumber = long.MaxValue;
+        }
+
+        return new StreamEntryId
+        {
+            Timestamp = msValue,
+            Sequence = sequenceNumber,
+        };
     }
 
     string GetRedisProtocol(string[] commands) => commands[2].ToLower();

@@ -1,16 +1,9 @@
 public class RedisStream
 {
-    public string Id { get; set; }
-    public List<KeyValuePair<string, string>> Data { get; }
+    public List<StreamEntry> Entries { get; } = new();
 
-    public RedisStream(string streamId)
+    public void AddToStream(string entryId, List<KeyValuePair<string, string>> data)
     {
-        Id = streamId;
-        Data = new List<KeyValuePair<string, string>>();
-    }
-
-    public void AddToStream(KeyValuePair<string, string> kv)
-    {
-        Data.Add(kv);
+        Entries.Add(new StreamEntry(entryId, data));
     }
 }

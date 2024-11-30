@@ -22,22 +22,31 @@ public class RedisValue
         }
     }
 
-    public RedisValue(KeyValuePair<string, string> keyValuePair, string streamId)
+    public RedisValue(List<KeyValuePair<string, string>> streamEntryData, string streamEntryId)
     {
-        Stream = new RedisStream(streamId);
-        Stream.Data.Add(keyValuePair);
+        if (streamEntryData == null)
+        {
+            throw new ArgumentNullException(nameof(streamEntryData));
+        }
 
+        if (streamEntryId == null)
+        {
+            throw new ArgumentNullException(nameof(streamEntryId));
+        }
+
+        Stream = new RedisStream();
         Type = RedisValueType.STREAM;
+        AddToStream(streamEntryId, streamEntryData);
     }
 
-    public void AddToStream(KeyValuePair<string, string> keyValuePair)
+    public void AddToStream(string streamEntryId, List<KeyValuePair<string, string>> streamEntryData)
     {
         if (Stream is null)
         {
             throw new ArgumentException("Value is not of type 'stream'");
         }
 
-        Stream.AddToStream(keyValuePair);
+        Stream.AddToStream(streamEntryId, streamEntryData);
     }
 
     public bool IsExpired()
