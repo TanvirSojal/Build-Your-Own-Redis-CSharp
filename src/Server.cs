@@ -63,6 +63,9 @@ async Task HandleIncomingRequestAsync(Socket socket)
     // new Redis Engine instantiated for every client connection
     var engine = new RedisEngine(rdbHandler, redisInstance);
 
+    // Use SemaphoreSlim to control concurrent processing within a connection
+    using var concurrencyLimiter = new SemaphoreSlim(Environment.ProcessorCount, Environment.ProcessorCount);
+
     while (true)
     {
         var readBuffer = new byte[1024];
@@ -74,6 +77,21 @@ async Task HandleIncomingRequestAsync(Socket socket)
             break;
         }
 
-        await engine.ProcessRequestAsync(socket, readBuffer, stats);
+        // Process requests concurrently within the connection limits
+        // Wait for available slot
+        await concurrencyLimiter.WaitAsync();
+        
+        // Process the request asynchronously without blocking the input loop
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await engine.ProcessRequestAsync(socket, readBuffer, stats);
+            }
+            finally
+            {
+                concurrencyLimiter.Release();
+            }
+        });
     }
 }

@@ -1,11 +1,14 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 
 public class RedisInstance
 {
+    private readonly object _replicasLock = new object();
+    
     public ServerRole Role { get; set; } = ServerRole.Master;
     public IPEndPoint? MasterEndpoint { get; set; }
-    public readonly List<Socket> ConnectedReplicas = new List<Socket>();
+    public readonly ConcurrentBag<Socket> ConnectedReplicas = new ConcurrentBag<Socket>();
     public int Port { get; set; }
 
     public void SetMasterEndpoint(string address){

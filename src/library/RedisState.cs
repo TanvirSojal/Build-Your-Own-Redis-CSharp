@@ -1,10 +1,12 @@
+using System.Collections.Concurrent;
+
 public class RedisState
 {
     public string Name { get; set; } = "";
     public string Version { get; set; } = "";
-    public Dictionary<string, string> AuxFields { get; set; } = new Dictionary<string, string>();
-    public Dictionary<int, RedisDatabase> Databases { get; set; } = new Dictionary<int, RedisDatabase>();
-    public Dictionary<string, StreamInformation> StreamInformationDictionary = new Dictionary<string, StreamInformation>();
+    public ConcurrentDictionary<string, string> AuxFields { get; set; } = new ConcurrentDictionary<string, string>();
+    public ConcurrentDictionary<int, RedisDatabase> Databases { get; set; } = new ConcurrentDictionary<int, RedisDatabase>();
+    public ConcurrentDictionary<string, StreamInformation> StreamInformationDictionary = new ConcurrentDictionary<string, StreamInformation>();
 
     private string GetAuxFields()
     {
