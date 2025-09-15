@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net.Sockets;
 using System.Text;
@@ -854,7 +855,7 @@ public class RedisEngine
         return db;
     }
 
-    private Dictionary<string, StreamInformation> GetStreamInformationDictionary()
+    private ConcurrentDictionary<string, StreamInformation> GetStreamInformationDictionary()
     {
         return _rdbHandler.RedisState.StreamInformationDictionary;
     }
@@ -873,11 +874,12 @@ public class RedisEngine
 
     private async Task SendCommandToReplicasAsync(byte[] propCommand, ClientConnectionState state)
     {
-        Logger.Log($"Sending to {_redisInstance.ConnectedReplicas.Count} replica(s).");
+        var replicas = _redisInstance.ConnectedReplicas.ToArray();
+        Logger.Log($"Sending to {replicas.Length} replica(s).");
 
         state.NumberOfReplicasAcknowledged = 0;
 
-        foreach (var replica in _redisInstance.ConnectedReplicas)
+        foreach (var replica in replicas)
         {
             Logger.Log($"Sending command to replica {replica.RemoteEndPoint}");
 
